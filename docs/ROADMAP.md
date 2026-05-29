@@ -68,7 +68,7 @@ interpreter · (future) WASM · C · HDL · ...
 | Engine: sequential/bistable support — persistent relay state (latch memory), parallel-contact handling, short-by-current and oscillation detection | ✅ | `src/simulate.tcl` |
 | Clocked sequential logic — gated D latch, rising-edge (master/slave) D flip-flop, toggle flip-flop and a 2-bit ripple counter; clocked in DC via persistent state and free-running in the transient analyser | ✅ | `lib/logic.tcl` |
 | Standard panel circuits — on/off-delay timers, one-shot, debounce, flasher, latching relay bank, safety interlock, plus a timed bench stimulus (`run -events`) | ✅ | `lib/standard.tcl`, `src/transient.tcl` |
-| Engine: device realism — battery internal resistance (voltage sag, bounded shorts), relay hysteresis (distinct pick-up / drop-out), relay propagation delay (operate/release time, glitch rejection) | ✅ | `src/simulate.tcl`, `src/transient.tcl` |
+| Engine: device realism — battery internal resistance; relay hysteresis, propagation delay and an inductive coil (current ramp + kickback); wire resistance from AWG×length; capacitor ESR/leakage; inductor winding resistance; diode series resistance and reverse breakdown (Zener); fuse/breaker inverse time-current (I²t); a coupled-winding transformer; power & energy measurement | ✅ | `src/simulate.tcl`, `src/transient.tcl` |
 
 ## Next
 
@@ -84,4 +84,6 @@ language:
   from the same schematic source.
 - **Engine (optional)** — AC/frequency analysis would turn Schem into a
   full electrical *simulator* as well as a computation language; convergence
-  aids for very large nonlinear boards.
+  aids for very large nonlinear boards.  (All the DC/transient device
+  physics is now in place — sources, reactives, semiconductors, protection,
+  magnetics, with their real parasitics.)

@@ -73,6 +73,10 @@ oo::define ::schem::Schematic {
         }
         set diodeV    [dict create]
         set heat      [dict create]   ;# fuse/breaker accumulated I^2t
+        set xfmrI     [dict create]   ;# per-transformer winding currents {I1 I2}
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] eq "transformer"} { dict set xfmrI $name {0.0 0.0} }
+        }
         set out [dict create t {}]
         foreach sig $record { dict set out $sig {} }
 
@@ -90,7 +94,7 @@ oo::define ::schem::Schematic {
             # Build companion models for this step from the stored state.
             set state [dict create diodeV $diodeV]
             set capState [dict create] ; set indState [dict create]
-            set coilState [dict create]
+            set coilState [dict create] ; set xfmrState [dict create]
             dict for {name comp} $Comp {
                 set pr [dict get $comp params]
                 switch [dict get $comp type] {
@@ -124,11 +128,29 @@ oo::define ::schem::Schematic {
                         set ieq [expr {$geq*($L/$dt)*[dict get $indI $name]}]
                         dict set indState $name [list $geq $ieq]
                     }
+                    transformer {
+                        # Companion = dt * inv(L) where L = [[L1,M],[M,L2]],
+                        # M = k*sqrt(L1*L2).  Coupling coefficient k<1 keeps the
+                        # inductance matrix nonsingular.
+                        set L1 [expr {double([dict get $pr l1])}]
+                        set L2 [expr {double([dict get $pr l2])}]
+                        set k  [expr {double([dict get $pr k])}]
+                        if {$k >= 1.0}  { set k 0.999 }
+                        if {$k <= -1.0} { set k -0.999 }
+                        set M [expr {$k*sqrt($L1*$L2)}]
+                        set det [expr {$L1*$L2 - $M*$M}]
+                        if {$det <= 0} { set det 1e-12 }
+                        lassign [dict get $xfmrI $name] i1p i2p
+                        dict set xfmrState $name [list \
+                            [expr {$dt*$L2/$det}] [expr {-$dt*$M/$det}] \
+                            [expr {-$dt*$M/$det}] [expr {$dt*$L1/$det}] $i1p $i2p]
+                    }
                 }
             }
             dict set state capState $capState
             dict set state indState $indState
             dict set state coilState $coilState
+            dict set state xfmrState $xfmrState
 
             # Solve this instant, holding relay/fuse/breaker state fixed
             # (their state was decided by the *previous* step -> dt lag).
@@ -171,6 +193,20 @@ oo::define ::schem::Schematic {
                             set inew [expr {$cgeq*$vc + $cieq}]
                             dict set coilI $name $inew
                             dict set imap $name $inew
+                        }
+                    }
+                    transformer {
+                        if {[dict exists $xfmrState $name]} {
+                            lassign [dict get $xfmrState $name] g11 g12 g21 g22 i1p i2p
+                            set v1 [expr {[my NodeVoltageFromX $x $name.p1] - \
+                                          [my NodeVoltageFromX $x $name.n1]}]
+                            set v2 [expr {[my NodeVoltageFromX $x $name.p2] - \
+                                          [my NodeVoltageFromX $x $name.n2]}]
+                            set i1 [expr {$g11*$v1 + $g12*$v2 + $i1p}]
+                            set i2 [expr {$g21*$v1 + $g22*$v2 + $i2p}]
+                            dict set xfmrI $name [list $i1 $i2]
+                            dict set imap $name.pri $i1
+                            dict set imap $name.sec $i2
                         }
                     }
                 }

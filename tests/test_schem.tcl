@@ -605,4 +605,23 @@ test coil-kickback {interrupting an inductive coil spikes; a flyback diode clamp
     list [expr {abs($pbare) > 50.0}] [expr {abs($pclamp) < 15.0}]
 } -cleanup {rename ::mkcoil {}} -result {1 1}
 
+# ---- transformer (mutual inductance) -------------------------------------
+
+test transformer-ratio {a 2:1 transformer steps voltage by the turns ratio} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 10 ; $s add ground GND ; $s wire B.neg GND.t
+    $s add switch SW -state open
+    # L1=1, L2=0.25 -> turns ratio sqrt(L2/L1) = 0.5 (step-down 2:1).
+    $s add transformer T -l1 1.0 -l2 0.25 -k 0.99
+    $s add resistor RP -r 1 ; $s add resistor RL -r 1000
+    $s wire B.pos SW.a ; $s wire SW.b RP.a ; $s wire RP.b T.p1 ; $s wire T.n1 GND.t
+    $s wire T.p2 RL.a ; $s wire RL.b GND.t ; $s wire T.n2 GND.t
+    set d [$s run -duration 0.01 -dt 2e-4 -record {T.p1 T.p2} -events {0.001 {close SW}}]
+} -body {
+    # Once the primary is energised, V2/V1 ~ k*sqrt(L2/L1) = 0.495.
+    set v1 [lindex [dict get $d T.p1] end]
+    set v2 [lindex [dict get $d T.p2] end]
+    expr {abs($v2/$v1 - 0.495) < 0.02}
+} -cleanup {$s destroy} -result 1
+
 cleanupTests

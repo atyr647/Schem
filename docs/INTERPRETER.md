@@ -126,20 +126,27 @@ one-shot, debounce) are exercised — see `lib/standard.tcl`.
 | `battery` | `pos neg` | `emf 9.0`, `esr 0.0` | EMF source with internal resistance `esr`; terminal voltage sags as `emf − I·esr`, and `esr` bounds the short-circuit current at `emf/esr` |
 | `ground` | `t` | — | the `0 V` reference (all grounds = node 0) |
 | `resistor` | `a b` | `r 1000.0` | Ohm's law `V = I·R` |
-| `capacitor` | `a b` | `c 1e-6`, `v0 0.0` | stores charge; open at DC, dynamic in transient |
-| `inductor` | `a b` | `l 1e-3`, `i0 0.0` | opposes current change; short at DC |
+| `capacitor` | `a b` | `c 1e-6`, `v0 0.0`, `esr 0.0`, `rleak 0.0` | stores charge; open at DC, dynamic in transient; optional series `esr` and parallel leakage `rleak` (self-discharge) |
+| `inductor` | `a b` | `l 1e-3`, `i0 0.0`, `r 0.0` | opposes current change; at DC it is its winding resistance `r` (a short when `r=0`) |
 | `switch` | `a b` | `state open` | ideal conductor when `closed` |
 | `button` | `a b` | `state released` | ideal conductor when `pressed` |
-| `relay` | `c1 c2 com no nc` | `coil 100.0`, `pickup 0.01`, `dropout 0.005`, `delay 0.0` | coil current ≥ `pickup` connects `com–no`, else `com–nc`; **hysteresis**: once picked up it holds in until the current falls below `dropout`; **propagation delay**: in transient the contacts move only after the coil condition persists for `delay` seconds (operate/release time), so a glitch shorter than `delay` is ignored |
-| `breaker` | `a b` | `rating 10.0`, `state closed` | opens (trips) above `rating`; resettable |
-| `fuse` | `a b` | `rating 1.0`, `state intact` | opens (blows) above `rating`; permanent |
-| `diode` | `a k` | `is 1e-14`, `n 1.0` | one-way (Shockley); ~0.6–0.7 V forward drop |
+| `relay` | `c1 c2 com no nc` | `coil 100.0`, `coilL 0.0`, `pickup 0.01`, `dropout 0.005`, `delay 0.0` | coil current ≥ `pickup` connects `com–no`, else `com–nc`; **hysteresis** (holds in until below `dropout`); **propagation delay** (`delay` s operate/release); **inductive coil** (`coilL`): in transient the coil current ramps and interrupting it produces back-EMF (kickback) |
+| `breaker` | `a b` | `rating 10.0`, `state closed`, `i2t 0.0` | opens (trips) above `rating`, resettable; with `i2t` follows an inverse time-current curve in transient |
+| `fuse` | `a b` | `rating 1.0`, `state intact`, `i2t 0.0` | opens (blows) above `rating`, permanent; with `i2t` follows an inverse time-current curve in transient |
+| `diode` | `a k` | `is 1e-14`, `n 1.0`, `rs 0.0`, `bv 0.0` | one-way (Shockley), ~0.6–0.7 V forward drop; optional bulk `rs`; reverse breakdown (Zener) below `-bv` |
+| `transformer` | `p1 n1 p2 n2` | `l1 1.0`, `l2 1.0`, `k 0.99` | two magnetically coupled windings (`M = k√(L1·L2)`); transforms voltage by the turns ratio in transient (windings are shorts at DC) |
 | `bus` | `t` | — | shared node many parts attach to |
 | `junction` | `t` | — | a connection point |
 | `ammeter` | `a b` | — | a `0 V` series branch for current readout |
 
+A gauged wire (`-awg N`) given a length (`-len M`, metres) carries its real
+copper resistance (`docs` `RESPERM` ohms/m × length) and so drops voltage;
+without a length it is an ideal conductor with only an ampacity limit.
+
 Relay coil current is read with `$s current K`; its contact current with
-`$s current K.contact`.
+`$s current K.contact`.  `$s power NAME` gives instantaneous power
+(positive = dissipating, negative = delivering) and `$s energy NAME` the
+energy stored in a capacitor (`½CV²`) or inductor (`½LI²`).
 
 ## Scale hierarchy: Circuit → Panel → Grid
 

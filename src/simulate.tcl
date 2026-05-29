@@ -146,6 +146,16 @@ oo::define ::schem::Schematic {
                             rs [expr {double([dict get $pr r])}]]
                     }
                 }
+                transformer {
+                    if {$mode eq "dc"} {
+                        # At DC each ideal winding is a short (mutual coupling
+                        # is a transient/dynamic effect): two 0 V branches.
+                        lappend br [dict create owner $name.pri kind transformer \
+                            p [my NodeOf $name.p1] q [my NodeOf $name.n1] emf 0.0]
+                        lappend br [dict create owner $name.sec kind transformer \
+                            p [my NodeOf $name.p2] q [my NodeOf $name.n2] emf 0.0]
+                    }
+                }
             }
         }
         return $br
@@ -200,6 +210,17 @@ oo::define ::schem::Schematic {
             upvar 1 z z
             if {$nA != 0} { lset z [expr {$nA-1}] [expr {[lindex $z [expr {$nA-1}]] - $I}] }
             if {$nB != 0} { lset z [expr {$nB-1}] [expr {[lindex $z [expr {$nB-1}]] + $I}] }
+        }}
+        # Voltage-controlled current source: current g*(V_nC - V_nD) flows from
+        # node nP to nN.  This is what couples a transformer's two windings.
+        set stampVCCS {{nP nN nC nD g} {
+            upvar 1 A A
+            foreach {row col s} [list $nP $nC 1 $nP $nD -1 $nN $nC -1 $nN $nD 1] {
+                if {$row != 0 && $col != 0} {
+                    lset A [expr {$row-1}] [expr {$col-1}] \
+                        [expr {[lindex $A [expr {$row-1}] [expr {$col-1}]] + $s*$g}]
+                }
+            }
         }}
 
         # --- resistive + reactive (conductance) elements ---
@@ -258,6 +279,24 @@ oo::define ::schem::Schematic {
                         set na [my NodeOf $name.a] ; set nb [my NodeOf $name.b]
                         apply $stampG $na $nb $geq
                         apply $stampI $na $nb $ieq
+                    }
+                }
+                transformer {
+                    # Two magnetically coupled windings: the backward-Euler
+                    # companion is a 2x2 conductance block (the inverse of the
+                    # inductance matrix scaled by dt) plus a current source per
+                    # winding.  This couples the windings so a changing primary
+                    # current induces a secondary voltage (and vice versa).
+                    if {[dict exists $state xfmrState $name]} {
+                        lassign [dict get $state xfmrState $name] g11 g12 g21 g22 i1p i2p
+                        set p1 [my NodeOf $name.p1] ; set n1 [my NodeOf $name.n1]
+                        set p2 [my NodeOf $name.p2] ; set n2 [my NodeOf $name.n2]
+                        apply $stampVCCS $p1 $n1 $p1 $n1 $g11
+                        apply $stampVCCS $p1 $n1 $p2 $n2 $g12
+                        apply $stampVCCS $p2 $n2 $p1 $n1 $g21
+                        apply $stampVCCS $p2 $n2 $p2 $n2 $g22
+                        apply $stampI $p1 $n1 $i1p
+                        apply $stampI $p2 $n2 $i2p
                     }
                 }
             }
