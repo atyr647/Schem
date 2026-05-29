@@ -32,8 +32,15 @@ generate effects*) using **Modified Nodal Analysis (MNA)**:
    The matrix rows *are* Kirchhoff's current law at each node; the
    source-branch rows *are* Kirchhoff's voltage law.
 
-3. **Solve.** The dense system is solved by Gaussian elimination with
-   partial pivoting (`src/solver.tcl`). A singular system means a
+3. **Solve.** The system is solved by Gaussian elimination with partial
+   pivoting (`src/solver.tcl`).  A circuit matrix is **sparse** — each part
+   touches only a few nodes — so the engine stores just the non-zero entries
+   (an array keyed `row,col`) and eliminates only the rows that actually
+   couple to each pivot, via a cross-linked column index (`solve_sparse`).
+   This keeps a large panel or grid far cheaper than a dense `O(n³)`
+   factorisation, and never allocates the `n²` dense matrix at all.  (The
+   dense `solve` remains for the isolated linear-algebra tests.)  A singular
+   system means a
    degenerate circuit — e.g. an ideal conductor looping an ideal source —
    and is reported as a **short-circuit fault** rather than a crash. A
    *bounded* short is judged after the solve by effective resistance: if a

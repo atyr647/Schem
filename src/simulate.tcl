@@ -181,28 +181,26 @@ oo::define ::schem::Schematic {
         set sz [expr {$N + $B}]
         if {$sz == 0} { return [dict create v {} i {}] }
 
-        set A [::schem::la::zeros $sz $sz]
+        # Sparse MNA matrix: an array keyed "row,col" -> value (0-based), so
+        # only the non-zero entries exist.  z is a dense list of length sz.
+        unset -nocomplain Asp
+        array set Asp {}
         set z [::schem::la::zeros $sz]
 
         # gmin: a tiny conductance from every node to ground keeps floating
         # subnetworks solvable (standard SPICE practice).
         set gmin 1e-12
-        for {set i 0} {$i < $N} {incr i} {
-            lset A $i $i [expr {[lindex $A $i $i] + $gmin}]
-        }
+        for {set i 0} {$i < $N} {incr i} { set Asp($i,$i) $gmin }
 
         # Conductance stamp helper (node ids; 0 == ground == skipped).
         set stampG {{nA nB g} {
-            upvar 1 A A
-            if {$nA != 0} { lset A [expr {$nA-1}] [expr {$nA-1}] \
-                [expr {[lindex $A [expr {$nA-1}] [expr {$nA-1}]] + $g}] }
-            if {$nB != 0} { lset A [expr {$nB-1}] [expr {$nB-1}] \
-                [expr {[lindex $A [expr {$nB-1}] [expr {$nB-1}]] + $g}] }
+            upvar 1 Asp Asp
+            set a [expr {$nA-1}] ; set b [expr {$nB-1}]
+            if {$nA != 0} { ::schem::la::spacc Asp $a $a $g }
+            if {$nB != 0} { ::schem::la::spacc Asp $b $b $g }
             if {$nA != 0 && $nB != 0} {
-                lset A [expr {$nA-1}] [expr {$nB-1}] \
-                    [expr {[lindex $A [expr {$nA-1}] [expr {$nB-1}]] - $g}]
-                lset A [expr {$nB-1}] [expr {$nA-1}] \
-                    [expr {[lindex $A [expr {$nB-1}] [expr {$nA-1}]] - $g}]
+                ::schem::la::spacc Asp $a $b [expr {-$g}]
+                ::schem::la::spacc Asp $b $a [expr {-$g}]
             }
         }}
         # Current-source stamp: pushes current I from node a to node b.
@@ -214,11 +212,10 @@ oo::define ::schem::Schematic {
         # Voltage-controlled current source: current g*(V_nC - V_nD) flows from
         # node nP to nN.  This is what couples a transformer's two windings.
         set stampVCCS {{nP nN nC nD g} {
-            upvar 1 A A
+            upvar 1 Asp Asp
             foreach {row col s} [list $nP $nC 1 $nP $nD -1 $nN $nC -1 $nN $nD 1] {
                 if {$row != 0 && $col != 0} {
-                    lset A [expr {$row-1}] [expr {$col-1}] \
-                        [expr {[lindex $A [expr {$row-1}] [expr {$col-1}]] + $s*$g}]
+                    ::schem::la::spacc Asp [expr {$row-1}] [expr {$col-1}] [expr {$s*$g}]
                 }
             }
         }}
@@ -329,25 +326,23 @@ oo::define ::schem::Schematic {
             set row [expr {$N + $k}]
             set p [dict get $b p] ; set q [dict get $b q]
             if {$p != 0} {
-                lset A [expr {$p-1}] $row [expr {[lindex $A [expr {$p-1}] $row] + 1.0}]
-                lset A $row [expr {$p-1}] [expr {[lindex $A $row [expr {$p-1}]] + 1.0}]
+                ::schem::la::spacc Asp [expr {$p-1}] $row 1.0
+                ::schem::la::spacc Asp $row [expr {$p-1}] 1.0
             }
             if {$q != 0} {
-                lset A [expr {$q-1}] $row [expr {[lindex $A [expr {$q-1}] $row] - 1.0}]
-                lset A $row [expr {$q-1}] [expr {[lindex $A $row [expr {$q-1}]] - 1.0}]
+                ::schem::la::spacc Asp [expr {$q-1}] $row -1.0
+                ::schem::la::spacc Asp $row [expr {$q-1}] -1.0
             }
             # A source's internal resistance sits in series on its own branch
             # row: Vp - Vq - rs*I = emf (the branch current is negative on
             # discharge here), so the terminal voltage sags as rs*|I| under
             # load and the short-circuit current is bounded by emf/rs.
             set rs [expr {[dict exists $b rs] ? [dict get $b rs] : 0.0}]
-            if {$rs != 0} {
-                lset A $row $row [expr {[lindex $A $row $row] - $rs}]
-            }
+            if {$rs != 0} { ::schem::la::spacc Asp $row $row [expr {-$rs}] }
             lset z $row [dict get $b emf]
         }
 
-        set x [::schem::la::solve $A $z]
+        set x [::schem::la::solve_sparse Asp $z $sz]
         return [dict create v $x N $N B $B]
     }
 
