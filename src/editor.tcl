@@ -23,7 +23,7 @@ oo::class create ::schem::EditorSession {
 
     constructor {{schem {}}} {
         set Palette {battery ground resistor capacitor inductor switch \
-                     button relay breaker fuse diode bus junction}
+                     button relay breaker fuse diode bus junction ammeter}
         set Prefix {battery B ground GND resistor R capacitor C inductor L \
                     switch SW button BTN relay K breaker CB fuse F diode D \
                     bus BUS junction J ammeter A}

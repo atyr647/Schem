@@ -30,6 +30,7 @@ function. So the time-based cells are observed with the transient analyser
 | `debounce`        | `IN · OUT NC · VCC GND` | a chattering contact yields one clean make — the cap integrates the bounce so the coil sees a single rise |
 | `flasher`         | `OUT · VCC GND`         | a free-running pulse generator: the classic self-interrupting relay (coil fed through its own break contact), no external clock |
 | `relay_bank`      | `Q1..Qn · VCC GND` (+ `SET1..SETn` buttons, `RST` switch) | a latching annunciator: `n` independent seal-in channels sharing one common reset |
+| `safety_interlock`| `RUN · VCC GND` (+ `START`/`STOP` buttons, `ESTOP` switch, `GUARD1..GUARDn` switches) | start/stop motor control: `RUN` seals in on `START` and holds, but any open guard, `STOP`, or `ESTOP` in the normally-closed chain drops it instantly (and it will not auto-restart) |
 
 Each timer takes optional `R`/`C` arguments after its name to set the time
 constant, e.g. `on_delay_timer ton 100 5e-5`.
@@ -57,6 +58,12 @@ constant, e.g. `on_delay_timer ton 100 5e-5`.
   coil up; the coil's own make contact then holds it). All coils return to
   ground through one common `RST` contact, so opening it drops the whole
   bank at once.
+- **safety interlock** — `START` and the run contactor's own make contact
+  both feed the coil (the seal-in), but only through a series chain of
+  normally-closed guards, `STOP` and `ESTOP`. The chain is a logical AND of
+  "everything safe"; break any link and the seal opens, so `RUN` drops at
+  once and a momentary `START` is needed to run again. It builds on relay
+  hysteresis — the held contactor resists chatter on the guard chain.
 
 ## The bench stimulus (`run -events`)
 

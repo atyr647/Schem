@@ -124,24 +124,27 @@ checks each fundamental rule against a hand-computed value:
 | Irreversible faults        | a fuse blows on over-current and cannot reset     |
 | Resettable limits          | a breaker trips on over-current and resets        |
 | Short-circuit detection    | an ideal short across a source is reported        |
+| Source realism             | a battery sags under load and bounds its own short-circuit current (`esr`) |
 | Capacitance (state/timing) | RC charging tracks `E(1−e^{−t/RC})`               |
 | Inductance (inertia)       | RL current ramps as `I_max(1−e^{−tR/L})`          |
+| Relay hysteresis           | a coil holds in between its drop-out and pick-up currents |
+| Propagation delay          | contacts lag the coil by the operate time; brief glitches are ignored |
 | Emergent oscillation       | a relay wired through its own NC contact buzzes   |
 | Scale hierarchy            | a circuit → panel → grid flattens and solves      |
 | Wire ampacity              | a gauged wire over its rating raises a fault      |
 | **Computational universality** | relay gates → XOR → an 18-relay **full adder**; a seal-in **latch** holds a bit |
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
-| **Standard panel circuits** | on/off-delay timers, a one-shot, a contact debounce, a flasher, a latching relay bank |
+| **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
 Run them (79 tests total):
 
 ```sh
-$ tclsh tests/test_schem.tcl     # 23: the electrical laws
+$ tclsh tests/test_schem.tcl     # 28: the electrical laws + device realism
 $ tclsh tests/test_format.tcl    #  9: binary round-trip, harness, IR, viewer
 $ tclsh tests/test_tools.tcl     # 17: validator + interactive editor
 $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
-$ tclsh tests/test_standard.tcl  #  6: timers, one-shot, debounce, flasher, bank
+$ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
 ```
 
 ## Examples

@@ -118,14 +118,14 @@ one-shot, debounce) are exercised — see `lib/standard.tcl`.
 
 | Type | Terminals | Parameters (defaults) | Behavior |
 |------|-----------|------------------------|----------|
-| `battery` | `pos neg` | `emf 9.0`, `esr 0.0` | EMF source; originates current |
+| `battery` | `pos neg` | `emf 9.0`, `esr 0.0` | EMF source with internal resistance `esr`; terminal voltage sags as `emf − I·esr`, and `esr` bounds the short-circuit current at `emf/esr` |
 | `ground` | `t` | — | the `0 V` reference (all grounds = node 0) |
 | `resistor` | `a b` | `r 1000.0` | Ohm's law `V = I·R` |
 | `capacitor` | `a b` | `c 1e-6`, `v0 0.0` | stores charge; open at DC, dynamic in transient |
 | `inductor` | `a b` | `l 1e-3`, `i0 0.0` | opposes current change; short at DC |
 | `switch` | `a b` | `state open` | ideal conductor when `closed` |
 | `button` | `a b` | `state released` | ideal conductor when `pressed` |
-| `relay` | `c1 c2 com no nc` | `coil 100.0`, `pickup 0.01` | coil current ≥ `pickup` connects `com–no`, else `com–nc` |
+| `relay` | `c1 c2 com no nc` | `coil 100.0`, `pickup 0.01`, `dropout 0.005`, `delay 0.0` | coil current ≥ `pickup` connects `com–no`, else `com–nc`; **hysteresis**: once picked up it holds in until the current falls below `dropout`; **propagation delay**: in transient the contacts move only after the coil condition persists for `delay` seconds (operate/release time), so a glitch shorter than `delay` is ignored |
 | `breaker` | `a b` | `rating 10.0`, `state closed` | opens (trips) above `rating`; resettable |
 | `fuse` | `a b` | `rating 1.0`, `state intact` | opens (blows) above `rating`; permanent |
 | `diode` | `a k` | `is 1e-14`, `n 1.0` | one-way (Shockley); ~0.6–0.7 V forward drop |

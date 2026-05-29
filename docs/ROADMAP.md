@@ -67,11 +67,21 @@ interpreter · (future) WASM · C · HDL · ...
 | Relay standard-cell library — functionally-complete gates, XOR, half/full adder, seal-in latch; proves computational universality by truth table | ✅ | `lib/logic.tcl` |
 | Engine: sequential/bistable support — persistent relay state (latch memory), parallel-contact handling, short-by-current and oscillation detection | ✅ | `src/simulate.tcl` |
 | Clocked sequential logic — gated D latch, rising-edge (master/slave) D flip-flop, toggle flip-flop and a 2-bit ripple counter; clocked in DC via persistent state and free-running in the transient analyser | ✅ | `lib/logic.tcl` |
-| Standard panel circuits — on/off-delay timers, one-shot, debounce, flasher, latching relay bank, plus a timed bench stimulus (`run -events`) | ✅ | `lib/standard.tcl`, `src/transient.tcl` |
+| Standard panel circuits — on/off-delay timers, one-shot, debounce, flasher, latching relay bank, safety interlock, plus a timed bench stimulus (`run -events`) | ✅ | `lib/standard.tcl`, `src/transient.tcl` |
+| Engine: device realism — battery internal resistance (voltage sag, bounded shorts), relay hysteresis (distinct pick-up / drop-out), relay propagation delay (operate/release time, glitch rejection) | ✅ | `src/simulate.tcl`, `src/transient.tcl` |
 
 ## Next
 
-- **Backends** — emit the derived netlist/IR to other targets (C / WASM /
-  HDL), all from the same schematic source.
-- **Engine** — AC/frequency analysis, relay hysteresis (distinct pick-up /
-  drop-out), more parts, convergence aids.
+The language is electrically and computationally complete: every part and
+named standard circuit in the definition exists, and the engine obeys the
+fundamental laws with realistic devices.  What remains is *targets*, not
+language:
+
+- **Circuit IR** — a lowered, analysis-agnostic compile target (every
+  element classified by electrical role with its derived quantities and
+  control semantics) that backends consume.  The single foundation for:
+- **Backends** — emit the Circuit IR to other targets (C / WASM / HDL), all
+  from the same schematic source.
+- **Engine (optional)** — AC/frequency analysis would turn Schem into a
+  full electrical *simulator* as well as a computation language; convergence
+  aids for very large nonlinear boards.

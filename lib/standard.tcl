@@ -20,16 +20,17 @@
 namespace eval ::schem::lib {
     variable TCOIL 100.0     ;# timing-relay coil resistance (ohms)
     variable TPICK 0.05      ;# pick-up current (amps) -> 5 V across the coil
+    variable TDROP 0.04      ;# drop-out current (amps): a modest hysteresis
     variable TPULL 10000.0   ;# output pull-down (ohms)
 }
 
 # TRails -- supply rails plus the timing relay TR and its clean output OUT.
 # Leaves TR.c1 as the coil-drive node for the timing network to feed.
 proc ::schem::lib::TRails {c} {
-    variable TCOIL ; variable TPICK ; variable TPULL
+    variable TCOIL ; variable TPICK ; variable TDROP ; variable TPULL
     $c add junction VR ; $c add junction GR
     $c expose VCC VR.t ; $c expose GND GR.t
-    $c add relay TR -coil $TCOIL -pickup $TPICK
+    $c add relay TR -coil $TCOIL -pickup $TPICK -dropout $TDROP
     $c wire TR.c2 GR.t
     $c wire VR.t TR.com
     $c add resistor PD -r $TPULL
@@ -110,11 +111,11 @@ proc ::schem::lib::debounce {{name debounce} {R 100.0} {C 1e-4}} {
 # pulses on and off with no external clock; the rate is the relay's own
 # switching cadence.  Ports: OUT VCC GND.
 proc ::schem::lib::flasher {{name flasher}} {
-    variable TCOIL ; variable TPICK ; variable TPULL
+    variable TCOIL ; variable TPICK ; variable TDROP ; variable TPULL
     set c [::schem::circuit $name]
     $c add junction VR ; $c add junction GR
     $c expose VCC VR.t ; $c expose GND GR.t
-    $c add relay FL -coil $TCOIL -pickup $TPICK
+    $c add relay FL -coil $TCOIL -pickup $TPICK -dropout $TDROP
     # VCC -> FL.com -> FL.nc (break) -> coil(c1): self-interrupting feedback.
     $c wire VR.t FL.com
     $c wire FL.nc FL.c1
@@ -148,5 +149,40 @@ proc ::schem::lib::relay_bank {{name bank} {n 3}} {
         $c wire K$i.c2 RST.a                 ;# coil return via the common reset
         $c expose Q$i K$i.c1
     }
+    return $c
+}
+
+# safety_interlock -- the classic start/stop motor-control interlock with a
+# guard chain.  A momentary START seals in the run contactor RUN through its
+# own make contact; the machine keeps running until STOP (a normally-closed
+# button) is pressed.  In series with the hold are `n` guard switches and an
+# emergency-stop, all normally-closed: if *any* guard opens (or E-STOP is
+# hit) the seal breaks and RUN drops instantly -- a logical AND of "all
+# guards in place" gating the run latch.  RUN is HIGH while the machine runs.
+# Ports: RUN VCC GND  (operate START button, STOP button, ESTOP switch,
+# GUARD1..GUARDn switches on the instantiated cell).
+proc ::schem::lib::safety_interlock {{name interlock} {n 2}} {
+    variable TCOIL ; variable TPICK ; variable TDROP
+    set c [::schem::circuit $name]
+    $c add junction VR ; $c add junction GR
+    $c expose VCC VR.t ; $c expose GND GR.t
+    $c add relay  RUN   -coil $TCOIL -pickup $TPICK -dropout $TDROP
+    $c add button START                      ;# momentary: energises the coil
+    $c add button STOP  -state pressed        ;# N.C. run/stop (pressed = closed)
+    $c add switch ESTOP -state closed          ;# N.C. emergency stop
+    # Build the normally-closed guard chain: VCC -> ESTOP -> GUARD1 ... -> head.
+    $c wire VR.t ESTOP.a
+    set head ESTOP.b
+    for {set i 1} {$i <= $n} {incr i} {
+        $c add switch GUARD$i -state closed
+        $c wire $head GUARD$i.a
+        set head GUARD$i.b
+    }
+    # head now carries VCC only when E-STOP and every guard are closed.
+    # START and the seal contact both feed the STOP button, then the coil.
+    $c wire $head START.a   ; $c wire START.b STOP.a      ;# momentary start
+    $c wire $head RUN.com   ; $c wire RUN.no  STOP.a      ;# seal-in (self-hold)
+    $c wire STOP.b RUN.c1   ; $c wire RUN.c2  GR.t         ;# through STOP into the coil
+    $c expose RUN RUN.c1
     return $c
 }

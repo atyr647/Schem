@@ -316,4 +316,88 @@ test wire-overload {a gauged wire carrying more than its ampacity faults} -setup
     expr {"wire-overload" in $kinds}
 } -cleanup {$s destroy} -result 1
 
+# ---- source realism: a battery's internal resistance ---------------------
+
+test esr-voltage-sag {a real source sags under load by I*esr} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 9 -esr 1.0
+    $s add ground GND
+    $s add resistor R -r 1000
+    $s wire B.pos R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+    $s solve
+} -body {
+    # I = 9/(1000+1) A; terminal V = 9 - I*1 = 8.99101...
+    approx [$s probe B.pos] [expr {9.0 - 9.0/1001.0}] 1e-4
+} -cleanup {$s destroy} -result ok
+
+test esr-bounds-short {internal resistance bounds the short-circuit current} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 12 -esr 0.5
+    $s add ground GND
+    $s add resistor R -r 0.5         ;# near-dead short across the source
+    $s wire B.pos R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+    $s solve
+} -body {
+    # I = 12/(0.5+0.5) = 12 A, finite -- not a singular matrix
+    approx [$s current B] 12.0 1e-3
+} -cleanup {$s destroy} -result ok
+
+# ---- relay hysteresis: pick-up above, drop-out below ---------------------
+
+test relay-hysteresis {a relay holds in between drop-out and pick-up} -setup {
+    # Coil 100 ohm; pick-up 0.05 A (5 V), drop-out 0.02 A (2 V).  A weak
+    # always-on drive sits the coil inside the band; a switchable strong
+    # drive pushes it above pick-up.
+    set s [schem::new t]
+    $s add battery B -emf 12
+    $s add ground GND ; $s wire B.neg GND.t
+    $s add resistor RW -r 250         ;# weak: 12/(250+100)=0.0343A (in the band)
+    $s add switch  HI -state open
+    $s add resistor RH -r 50          ;# strong: parallels RW, pushes well over pick-up
+    $s add relay K -coil 100 -pickup 0.05 -dropout 0.02
+    $s wire B.pos RW.a ; $s wire RW.b K.c1
+    $s wire B.pos HI.a ; $s wire HI.b RH.a ; $s wire RH.b K.c1
+    $s wire K.c2 GND.t
+} -body {
+    $s open  HI ; $s solve ; set a [$s energized K]   ;# in the band from below -> out
+    $s close HI ; $s solve ; set b [$s energized K]   ;# over pick-up -> comes in
+    $s open  HI ; $s solve ; set c [$s energized K]   ;# back in the band -> holds
+    list $a $b $c
+} -cleanup {$s destroy} -result {0 1 1}
+
+# ---- relay propagation delay (transient) ---------------------------------
+
+test relay-delay {contacts move only after the operate delay elapses} -setup {
+    set s [schem::new t]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add switch IN -state open ; $s wire VCC.pos IN.a
+    $s add relay K -coil 100 -pickup 0.05 -dropout 0.03 -delay 0.002
+    $s wire IN.b K.c1 ; $s wire K.c2 GND.t
+    $s wire VCC.pos K.com
+    $s add resistor LD -r 10000 ; $s wire K.no LD.a ; $s wire LD.b GND.t
+} -body {
+    # IN closes at 1 ms; with a 2 ms operate delay the make contact is still
+    # open at 2 ms and closed by 4 ms.
+    set d [$s run -duration 0.006 -dt 5e-4 -record K.no -events {0.001 {close IN}}]
+    set at {t {upvar 1 d d ; expr {[lindex [dict get $d K.no] [expr {int(round($t/5e-4))}]] > 6}}}
+    list [apply $at 0.002] [apply $at 0.004]
+} -cleanup {$s destroy} -result {0 1}
+
+test relay-delay-glitch {a coil glitch shorter than the delay is ignored} -setup {
+    set s [schem::new t]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add switch IN -state open ; $s wire VCC.pos IN.a
+    $s add relay K -coil 100 -pickup 0.05 -dropout 0.03 -delay 0.002
+    $s wire IN.b K.c1 ; $s wire K.c2 GND.t
+    $s wire VCC.pos K.com
+    $s add resistor LD -r 10000 ; $s wire K.no LD.a ; $s wire LD.b GND.t
+} -body {
+    # A 1 ms pulse (< 2 ms operate time): the contact never closes.
+    set d [$s run -duration 0.006 -dt 5e-4 -record K.no \
+        -events {0.001 {close IN} 0.002 {open IN}}]
+    set hi 0
+    foreach v [dict get $d K.no] { if {$v > 6} { set hi 1 } }
+    set hi
+} -cleanup {$s destroy} -result 0
+
 cleanupTests

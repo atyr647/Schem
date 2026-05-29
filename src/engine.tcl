@@ -56,7 +56,7 @@ namespace eval ::schem {
         inductor  {terminals {a b}         params {l 1e-3 i0 0.0}}
         switch    {terminals {a b}         params {state open}}
         button    {terminals {a b}         params {state released}}
-        relay     {terminals {c1 c2 com no nc} params {coil 100.0 pickup 0.01}}
+        relay     {terminals {c1 c2 com no nc} params {coil 100.0 pickup 0.01 dropout 0.005 delay 0.0}}
         breaker   {terminals {a b}         params {rating 10.0 state closed}}
         fuse      {terminals {a b}         params {rating 1.0 state intact}}
         diode     {terminals {a k}         params {is 1e-14 n 1.0}}

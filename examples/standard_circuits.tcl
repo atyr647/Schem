@@ -104,4 +104,18 @@ $s press U/SET2 ; $s solve ; $s release U/SET2 ; $s solve ; show $s $g "set chan
 $s press U/SET1 ; $s solve ; $s release U/SET1 ; $s solve ; show $s $g "set channel 1 (2 holds)"
 $s open  U/RST  ; $s solve ; $s close   U/RST  ; $s solve ; show $s $g "tap common RESET"
 $s destroy
+
+# --- safety interlock: start/stop seal-in gated by a guard chain --------
+puts "\n  SAFETY INTERLOCK (start/stop seal-in; any guard or E-STOP drops RUN):"
+lassign [rig safety_interlock il 2] s g
+proc run? {s g} { return [expr {[$s probe [dict get $g RUN]] > 6 ? 1 : 0}] }
+proc line {s g msg} { puts [format "    %-26s RUN = %d" $msg [run? $s $g]] }
+$s solve                                                         ; line $s $g "power on (idle)"
+$s press U/START ; $s solve ; $s release U/START ; $s solve       ; line $s $g "tap START (seals in)"
+$s solve                                                         ; line $s $g "...keeps running"
+$s open U/GUARD2 ; $s solve                                       ; line $s $g "a guard opens"
+$s close U/GUARD2 ; $s solve                                      ; line $s $g "guard closed (no auto-run)"
+$s press U/START ; $s solve ; $s release U/START ; $s solve       ; line $s $g "restart"
+$s open U/ESTOP ; $s solve                                        ; line $s $g "E-STOP!"
+$s destroy
 puts ""

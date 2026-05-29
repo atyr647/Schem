@@ -65,6 +65,7 @@ oo::define ::schem::Schematic {
         }
 
         set energized [dict create]
+        set pend      [dict create]   ;# per-relay pending contact transitions
         set diodeV    [dict create]
         set out [dict create t {}]
         foreach sig $record { dict set out $sig {} }
@@ -146,8 +147,9 @@ oo::define ::schem::Schematic {
                 }
             }
 
-            # Decide relay/fuse/breaker state for the *next* step.
-            my UpdateDevices $branches energized
+            # Decide relay/fuse/breaker state for the *next* step, honouring
+            # each relay's propagation delay (operate / release time).
+            my UpdateDevices $branches energized pend $tnow
         }
         dict set Result faults $Faults
         return $out

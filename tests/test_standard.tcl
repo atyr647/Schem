@@ -126,4 +126,23 @@ test relay-bank {channels latch independently and clear together} -body {
     set seq
 } -result {000 010 110 000}
 
+# ---- safety interlock: start/stop seal-in gated by a guard chain --------
+
+test safety-interlock {RUN seals in, and any guard/STOP/E-STOP drops it} -body {
+    lassign [rig safety_interlock il 2] s g
+    proc run? {s g} { return [expr {[$s probe [dict get $g RUN]] > 6 ? 1 : 0}] }
+    set seq {}
+    $s solve ; lappend seq [run? $s $g]                                  ;# 0 idle
+    $s press U/START ; $s solve ; $s release U/START ; $s solve
+    lappend seq [run? $s $g]                                             ;# 1 sealed in
+    $s solve ; lappend seq [run? $s $g]                                  ;# 1 holds
+    $s open U/GUARD2 ; $s solve ; lappend seq [run? $s $g]               ;# 0 guard opened
+    $s close U/GUARD2 ; $s solve ; lappend seq [run? $s $g]              ;# 0 no auto-restart
+    $s press U/START ; $s solve ; $s release U/START ; $s solve
+    lappend seq [run? $s $g]                                             ;# 1 restarted
+    $s open U/ESTOP ; $s solve ; lappend seq [run? $s $g]                ;# 0 e-stop
+    $s destroy
+    set seq
+} -result {0 1 1 0 0 1 0}
+
 cleanupTests

@@ -208,7 +208,7 @@ denotes inside a Schem program. They are not merely visual parts.
 | **Inductance**  | Inertia, momentum, delayed reaction. Resists *current* change; current ramps as `I(t)=I_max(1−e^{−tR/L})`. |
 | **Breakers**    | Protection and limits. Open (trip) above a current rating; resettable. |
 | **Fuses**       | Irreversible faults. Open permanently above a current rating.    |
-| **Relays**      | Conditional routing. A coil's current closes/opens isolated contacts — conditional behavior with no `if`. |
+| **Relays**      | Conditional routing. A coil's current closes/opens isolated contacts — conditional behavior with no `if`. Real relays have **hysteresis** (a higher pick-up than drop-out current, so a held contact resists chatter) and a **propagation delay** (contacts move only after the coil condition persists for the operate/release time, so brief glitches are ignored and feedback loops can race). |
 | **Diodes**      | One-way flow. Conduct only when forward-biased past `Vf`.        |
 | **Buses**       | Shared conductors: one node many parts attach to.                |
 | **Harnesses**   | Bundled conductors routed together between assemblies.           |
@@ -219,7 +219,10 @@ denotes inside a Schem program. They are not merely visual parts.
 ### Sources & Reference
 
 - **Battery** supplies an EMF (a fixed voltage) between its `pos` and
-  `neg` terminals. It is the only thing that *originates* current.
+  `neg` terminals. It is the only thing that *originates* current. A real
+  source also has an **internal resistance** (`esr`): its terminal voltage
+  sags under load as `emf − I·esr`, and that same resistance bounds the
+  current a dead short can draw to `emf/esr`.
 - **Ground** defines the `0 V` reference. Every potential is measured
   against it, and current must be able to return to a source through
   ground (or a return conductor) for a loop to be closed.

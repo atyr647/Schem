@@ -108,7 +108,8 @@ oo::define ::schem::Schematic {
                 battery {
                     lappend br [dict create owner $name kind battery \
                         p [my NodeOf $name.pos] q [my NodeOf $name.neg] \
-                        emf [expr {double([dict get $pr emf])}]]
+                        emf [expr {double([dict get $pr emf])}] \
+                        rs [expr {double([dict get $pr esr])}]]
                 }
                 breaker {
                     if {[dict get $pr state] eq "closed"} {
@@ -275,6 +276,14 @@ oo::define ::schem::Schematic {
                 lset A [expr {$q-1}] $row [expr {[lindex $A [expr {$q-1}] $row] - 1.0}]
                 lset A $row [expr {$q-1}] [expr {[lindex $A $row [expr {$q-1}]] - 1.0}]
             }
+            # A source's internal resistance sits in series on its own branch
+            # row: Vp - Vq - rs*I = emf (the branch current is negative on
+            # discharge here), so the terminal voltage sags as rs*|I| under
+            # load and the short-circuit current is bounded by emf/rs.
+            set rs [expr {[dict exists $b rs] ? [dict get $b rs] : 0.0}]
+            if {$rs != 0} {
+                lset A $row $row [expr {[lindex $A $row $row] - $rs}]
+            }
             lset z $row [dict get $b emf]
         }
 
@@ -408,8 +417,15 @@ oo::define ::schem::Schematic {
     # UpdateDevices -- re-evaluate relay coils, fuses and breakers against
     # the freshly solved currents.  Returns 1 if any state changed (so the
     # fixed-point loop must re-solve), 0 once everything is consistent.
-    method UpdateDevices {branches energizedVar} {
+    #
+    # In transient analysis a relay can also have a propagation delay: its
+    # contacts move only after the coil condition has *persisted* for the
+    # relay's operate/release time.  Pass `pendVar` (a dict tracking pending
+    # transitions) and the current time `tnow` to enable it; without them
+    # (DC solve) relays switch immediately, as before.
+    method UpdateDevices {branches energizedVar {pendVar {}} {tnow 0}} {
         upvar 1 $energizedVar energized
+        if {$pendVar ne ""} { upvar 1 $pendVar pend }
         set changed 0
         set imap [dict get $Result imap]
         set vmap [dict get $Result vmap]
@@ -423,10 +439,38 @@ oo::define ::schem::Schematic {
                     set rc [expr {double([dict get $pr coil])}]
                     set ic [expr {$rc > 0 ? $vc/$rc : 0.0}]
                     set pickup [expr {double([dict get $pr pickup])}]
-                    set now [expr {$ic >= $pickup}]
+                    # Hysteresis: a real relay needs the full pick-up current to
+                    # close, but holds in until the coil falls to the lower
+                    # drop-out current.  (Defaults to no hysteresis if the
+                    # part predates the dropout parameter.)
+                    set dropout [expr {[dict exists $pr dropout] ? \
+                        double([dict get $pr dropout]) : $pickup}]
+                    if {$dropout > $pickup} { set dropout $pickup }
                     set was [dict exists $energized $name]
-                    if {$now && !$was} { dict set energized $name 1 ; set changed 1 }
-                    if {!$now && $was} { dict unset energized $name ; set changed 1 }
+                    set now [expr {$was ? ($ic >= $dropout) : ($ic >= $pickup)}]
+                    set delay [expr {[dict exists $pr delay] ? \
+                        double([dict get $pr delay]) : 0.0}]
+                    if {$pendVar eq "" || $delay <= 0} {
+                        # Immediate (DC, or a relay with no propagation delay).
+                        if {$now && !$was} { dict set energized $name 1 ; set changed 1 }
+                        if {!$now && $was} { dict unset energized $name ; set changed 1 }
+                    } elseif {$now == $was} {
+                        # Desired state already matches: cancel any pending move
+                        # (a coil glitch shorter than the delay is ignored).
+                        dict unset pend $name
+                    } else {
+                        # A transition is wanted: time how long it has persisted.
+                        if {![dict exists $pend $name] || \
+                            [lindex [dict get $pend $name] 0] != $now} {
+                            dict set pend $name [list $now $tnow]
+                        }
+                        if {$tnow - [lindex [dict get $pend $name] 1] >= $delay} {
+                            if {$now} { dict set energized $name 1 } \
+                            else      { dict unset energized $name }
+                            dict unset pend $name
+                            set changed 1
+                        }
+                    }
                 }
                 fuse {
                     if {[dict get $pr state] eq "intact" && [dict exists $imap $name]} {
