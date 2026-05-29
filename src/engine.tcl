@@ -68,8 +68,9 @@ namespace eval ::schem {
 #  Schematic -- one electrical artifact (a board / circuit / panel).
 # ====================================================================
 oo::class create ::schem::Schematic {
-    variable Comp     ;# name -> dict(type params state)
-    variable Conns    ;# list of merge connections {a b awg}; awg "" = ideal
+    variable Comp     ;# name -> dict(type params attrs)
+    variable Conns    ;# list of couplings {a b awg harness}; awg "" = ideal
+    variable Harness  ;# name -> dict(layer {} members {pair ...})
     variable Node     ;# terminal -> resolved node id (after build)
     variable NNodes   ;# number of non-ground nodes
     variable Result   ;# last solve: dict(v branchI ...)
@@ -81,6 +82,7 @@ oo::class create ::schem::Schematic {
         set Name $name
         set Comp [dict create]
         set Conns {}
+        set Harness [dict create]
         set Result [dict create]
         set Faults {}
         set Diode [dict create]
@@ -102,16 +104,45 @@ oo::class create ::schem::Schematic {
         }
         set meta $META($type)
         set params [dict get $meta params]
+        # attrs hold the spatial/organisational facts of the object model
+        # (where the part sits, which layer it lives on) -- distinct from
+        # its electrical parameters.
+        set attrs [dict create pos {} layer default]
         foreach {k v} $args {
             set key [string trimleft $k -]
+            switch -- $key {
+                at    { dict set attrs pos [my ParsePos $v] ; continue }
+                layer { dict set attrs layer $v ; continue }
+            }
             if {![dict exists $params $key]} {
                 return -code error "component $type has no parameter \"$key\""
             }
             dict set params $key $v
         }
-        dict set Comp $name [dict create type $type params $params]
+        dict set Comp $name [dict create type $type params $params attrs $attrs]
         return $name
     }
+
+    method ParsePos {v} {
+        set v [string map {, " "} $v]
+        if {[llength $v] != 2} {
+            return -code error "position must be \"x,y\" (got \"$v\")"
+        }
+        return [list [expr {double([lindex $v 0])}] [expr {double([lindex $v 1])}]]
+    }
+
+    # place / layer -- set a component's spatial attributes after the fact.
+    method place {name x y} {
+        if {![dict exists $Comp $name]} { return -code error "no such component \"$name\"" }
+        dict set Comp $name attrs [dict replace [dict get $Comp $name attrs] pos [list [expr {double($x)}] [expr {double($y)}]]]
+        return
+    }
+    method layer {name lyr} {
+        if {![dict exists $Comp $name]} { return -code error "no such component \"$name\"" }
+        dict set Comp $name attrs [dict replace [dict get $Comp $name attrs] layer $lyr]
+        return
+    }
+    method attrs {name} { return [dict get $Comp $name attrs] }
 
     # wire -- join two terminals with a conductor (continuity).
     #   wire A.pin B.pin ?-awg N?
@@ -127,9 +158,38 @@ oo::class create ::schem::Schematic {
                 return -code error "wire: unknown option $k"
             }
         }
-        lappend Conns [list $ta $tb $awg]
+        # Coupling tuple: {a b awg harness}. Plain wires carry no harness tag.
+        lappend Conns [list $ta $tb $awg {}]
         return
     }
+
+    # harness -- bundle several conductors that route together between
+    # assemblies.  Electrically it is just a set of ideal couplings; the
+    # bundle name is kept for the object model, serialization and rendering.
+    #   harness NAME {A.pin B.pin  C.pin D.pin ...}
+    method harness {name pairs args} {
+        if {[dict exists $Harness $name]} {
+            return -code error "duplicate harness \"$name\""
+        }
+        set layer default
+        foreach {k v} $args { if {$k eq "-layer"} { set layer $v } }
+        if {[llength $pairs] % 2 != 0} {
+            return -code error "harness members must be terminal pairs"
+        }
+        set members {}
+        foreach {a b} $pairs {
+            my ResolveTerm $a ; my ResolveTerm $b
+            lappend Conns [list $a $b {} $name]
+            lappend members [list $a $b]
+        }
+        dict set Harness $name [dict create layer $layer members $members]
+        return $name
+    }
+
+    # ---- object-model accessors (used by serializer / renderer / IR) ----
+    method conns     {} { return $Conns }
+    method harnesses {} { return $Harness }
+    method comp      {name} { return [dict get $Comp $name] }
 
     # set -- change a parameter or state of a placed component.
     method set {name key value} {

@@ -10,12 +10,39 @@ breakers) wired into circuits. Behavior emerges from continuity and
 current flow, exactly as it does on a real workbench.
 
 - **The language definition** lives in [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
+- **The architecture** (source = schematic object model; netlist = derived
+  cache) is in [`docs/ROADMAP.md`](docs/ROADMAP.md), and the binary
+  `.schem` file is described in [`docs/FORMAT.md`](docs/FORMAT.md).
 - **The interpreter** is a Tcl circuit engine in [`src/`](src/) that
   reads a schematic and solves it with real circuit theory:
   continuity (closed loops), Ohm's law, Kirchhoff's current & voltage
   laws, a ground reference, and correct device behavior.
 - **How the engine works** is documented in
   [`docs/INTERPRETER.md`](docs/INTERPRETER.md).
+
+## The source is the schematic
+
+A Schem program is a **schematic object model**, saved as a binary
+`.schem` project file — not text, not JSON, not an image. The interpreter,
+viewer and (future) editor all consume that same object; a derived
+netlist/IR is only a build-time cache.
+
+```
+.schem (binary object model = SOURCE)
+   │  open in the viewer            │  derive
+   ▼                                ▼
+ wired box diagram (a view)      netlist / IR (a cache) ──▶ interpreter / backends
+```
+
+```sh
+$ schem save examples/voltage_divider.schem.tcl divider.schem   # author -> object model
+$ schem open divider.schem                                       # opens visually
+Schematic: voltage_divider_schem
+
+┌───────────┐       ┌───────────┐       ┌───────────┐       ┌───────────┐
+│B:battery  │──────▶│R1:resistor│──────▶│R2:resistor│──────▶│GND:ground │
+└───────────┘       └───────────┘       └───────────┘       └───────────┘
+```
 
 This is not a drawing that *looks* electrical — every result is computed
 by **Modified Nodal Analysis** with Newton iteration for nonlinear devices
@@ -97,11 +124,11 @@ checks each fundamental rule against a hand-computed value:
 | Scale hierarchy            | a circuit → panel → grid flattens and solves      |
 | Wire ampacity              | a gauged wire over its rating raises a fault      |
 
-Run them:
+Run them (engine + artifact layer):
 
 ```sh
-$ tclsh tests/test_schem.tcl
-test_schem.tcl:	Total	23	Passed	23	Skipped	0	Failed	0
+$ tclsh tests/test_schem.tcl     # 23 tests: the electrical laws
+$ tclsh tests/test_format.tcl    # 9 tests: binary round-trip, harness, IR, viewer
 ```
 
 ## Examples
@@ -117,15 +144,20 @@ test_schem.tcl:	Total	23	Passed	23	Skipped	0	Failed	0
 ## Repository layout
 
 ```
-docs/LANGUAGE.md     the language definition (the manifesto / spec)
-docs/INTERPRETER.md  engine internals + full API reference
-src/schem.tcl        package entry point
-src/solver.tcl       dense linear solver (Gaussian elimination)
-src/engine.tcl       schematic model + component metadata
-src/simulate.tcl     nodal analysis, Newton + fixed-point solve, tools
-src/transient.tcl    time-domain analysis (capacitors / inductors)
-src/hierarchy.tcl    Component → Circuit → Panel → Grid
-bin/schem            command-line runner
-examples/            runnable schematics
-tests/test_schem.tcl regression suite
+docs/LANGUAGE.md      the language definition (the manifesto / spec)
+docs/ROADMAP.md       architecture: source object model, derived netlist
+docs/FORMAT.md        the binary .schem project file
+docs/INTERPRETER.md   engine internals + full API reference
+src/schem.tcl         package entry point
+src/solver.tcl        dense linear solver (Gaussian elimination)
+src/engine.tcl        schematic object model + component metadata
+src/simulate.tcl      nodal analysis, Newton + fixed-point solve, tools
+src/transient.tcl     time-domain analysis (capacitors / inductors)
+src/hierarchy.tcl     Component → Circuit → Panel → Grid
+src/format.tcl        binary .schem save / load
+src/netlist.tcl       derived netlist / IR (build cache)
+src/render.tcl        the viewer (draws the schematic as a wired diagram)
+bin/schem             command-line front end (run/save/open/netlist)
+examples/             runnable schematics
+tests/                regression suites (engine + artifact layer)
 ```

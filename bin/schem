@@ -1,64 +1,100 @@
 #!/usr/bin/env tclsh
-# schem -- command-line runner for the Schem electrical interpreter.
+# schem -- command-line front end for the Schem electrical interpreter.
 #
-#   schem path/to/board.schem.tcl     run a schematic and print its report
-#   schem -i                          interactive shell with the API loaded
-#   schem -v                          print version
+#   schem run    BUILDER.tcl            build a schematic and print its report
+#   schem save   BUILDER.tcl OUT.schem  build a schematic and save it (binary)
+#   schem open   FILE.schem             open a .schem file in the viewer
+#   schem view   FILE.schem             alias for open
+#   schem netlist FILE.schem            print the derived netlist / IR (cache)
+#   schem -i                            interactive shell with the API loaded
+#   schem -v                            print version
 #
-# A schematic file is a Tcl script that builds a schematic with the Schem
-# workbench API (schem::new, $s add, $s wire, ...).  The runner makes the
-# variable `s` available pre-bound to a fresh schematic named after the
-# file, so trivial boards can skip the boilerplate; files may also create
-# their own schematics.  After sourcing, if the file left `s` solvable, its
-# report is printed.
+# Bare `schem FILE.tcl` is treated as `schem run FILE.tcl` (back-compat).
+#
+# A BUILDER file is a Tcl script that constructs a schematic with the
+# workbench API.  The runner pre-binds `s` to a fresh schematic named after
+# the file, so trivial boards can skip the boilerplate.
 
 set bindir [file dirname [file normalize [info script]]]
 source [file join $bindir .. src schem.tcl]
+catch {fconfigure stdout -encoding utf-8}   ;# box-drawing views need UTF-8
 
 proc usage {} {
-    puts stderr "usage: schem <board.schem.tcl> | -i | -v"
+    puts stderr "usage: schem <run|save|open|view|netlist> ARGS | -i | -v"
+    puts stderr "       schem run    BUILDER.tcl"
+    puts stderr "       schem save   BUILDER.tcl OUT.schem"
+    puts stderr "       schem open   FILE.schem"
+    puts stderr "       schem netlist FILE.schem"
     exit 2
 }
 
-if {[llength $argv] == 0} { usage }
+# RunBuilder -- source a builder file with `s` pre-bound; returns the schematic.
+proc RunBuilder {file} {
+    if {![file readable $file]} { puts stderr "schem: cannot read \"$file\"" ; exit 1 }
+    set name [file rootname [file tail $file]]
+    set name [string map {. _} $name]
+    set ::s [schem::new $name]
+    uplevel #0 [list source $file]
+    return $::s
+}
 
-switch -- [lindex $argv 0] {
-    -v - --version {
-        puts "schem [schem::version]"
-        exit 0
-    }
+if {[llength $argv] == 0} { usage }
+set cmd [lindex $argv 0]
+set rest [lrange $argv 1 end]
+
+switch -- $cmd {
+    -v - --version { puts "schem [schem::version]" ; exit 0 }
+
     -i - --interactive {
         puts "Schem [schem::version] interactive shell."
         puts "A schematic `s` is ready.  Try: \$s add battery B -emf 9 ; \$s report"
         set ::s [schem::new interactive]
-        # Hand control to the standard Tcl REPL.
         while {![eof stdin]} {
             puts -nonewline "schem> " ; flush stdout
             if {[gets stdin line] < 0} break
-            if {[catch {uplevel #0 $line} res]} {
-                puts "error: $res"
-            } elseif {$res ne ""} {
-                puts $res
-            }
+            if {[catch {uplevel #0 $line} res]} { puts "error: $res" } \
+            elseif {$res ne ""} { puts $res }
         }
         exit 0
     }
-    default {
-        set file [lindex $argv 0]
-        if {![file readable $file]} {
-            puts stderr "schem: cannot read \"$file\""
-            exit 1
-        }
-        set name [file rootname [file tail $file]]
-        set s [schem::new $name]
-        # Expose the file's own argv tail.
-        set argv [lrange $argv 1 end]
-        source $file
-        # If the board built into `s` and has a ground, print its report.
-        if {[catch {$s components} comps]} { exit 0 }
-        if {[llength $comps] > 0} {
-            puts [$s report]
-        }
+
+    save {
+        if {[llength $rest] != 2} { usage }
+        lassign $rest builder out
+        set s [RunBuilder $builder]
+        set n [schem::save $s $out]
+        puts "saved $out ($n bytes, [llength [$s components]] components)"
         exit 0
+    }
+
+    open - view {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s view]
+        exit 0
+    }
+
+    netlist {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s netlistText]
+        exit 0
+    }
+
+    run {
+        if {[llength $rest] != 1} { usage }
+        set s [RunBuilder [lindex $rest 0]]
+        if {[llength [$s components]] > 0} { puts [$s report] }
+        exit 0
+    }
+
+    default {
+        # Back-compat: `schem FILE.tcl` == `schem run FILE.tcl`.
+        if {[file readable $cmd]} {
+            set s [RunBuilder $cmd]
+            if {[llength [$s components]] > 0} { puts [$s report] }
+            exit 0
+        }
+        usage
     }
 }

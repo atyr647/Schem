@@ -18,6 +18,9 @@ set _dir [file dirname [info script]]
 source [file join $_dir engine.tcl]
 source [file join $_dir transient.tcl]
 source [file join $_dir hierarchy.tcl]
+source [file join $_dir netlist.tcl]
+source [file join $_dir format.tcl]
+source [file join $_dir render.tcl]
 unset _dir
 
 # schem::new -- create a fresh schematic (board).

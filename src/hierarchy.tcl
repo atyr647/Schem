@@ -45,7 +45,7 @@ oo::define ::schem::Schematic {
     # it must be exported; export must follow the method definition).
     method Export {} {
         set p [expr {[info exists Ports] ? $Ports : [dict create]}]
-        return [list $Comp $Conns $p]
+        return [list $Comp $Conns $p $Harness]
     }
     export Export
 
@@ -55,7 +55,7 @@ oo::define ::schem::Schematic {
     # wired up.  Ground components are shared automatically because all
     # grounds collapse to node 0 in the solver.
     method instantiate {child prefix} {
-        lassign [$child Export] cComp cConns cPorts
+        lassign [$child Export] cComp cConns cPorts cHarness
 
         set rename {{term prefix} {
             lassign [split $term .] n pin
@@ -70,9 +70,19 @@ oo::define ::schem::Schematic {
             dict set Comp $newname $comp
         }
         foreach c $cConns {
-            lassign $c a b awg
+            lassign $c a b awg hn
+            if {$hn ne {}} { set hn "$prefix/$hn" }
             lappend Conns [list [apply $rename $a $prefix] \
-                                [apply $rename $b $prefix] $awg]
+                                [apply $rename $b $prefix] $awg $hn]
+        }
+        # Carry over the child's harness bundles under the instance prefix.
+        dict for {hname h} $cHarness {
+            set mem {}
+            foreach pr [dict get $h members] {
+                lassign $pr a b
+                lappend mem [list [apply $rename $a $prefix] [apply $rename $b $prefix]]
+            }
+            dict set Harness "$prefix/$hname" [dict replace $h members $mem]
         }
 
         set portmap [dict create]
