@@ -55,12 +55,18 @@ proc nodesMatch {s} {
 }
 # transient: compile+run the emitted Zig stepper, compare the node-voltage
 # time series to the engine's run() node-for-node, step-for-step.
-proc tranMatch {s dur dt} {
+proc tranMatch {s dur dt {events {}}} {
     set ir [$s compile] ; set N [dict get $ir nodes count]
     set terms {}   ;# one representative terminal per node, in node-id order
     for {set nid 1} {$nid <= $N} {incr nid} { lappend terms [lindex [dict get $ir nodes map $nid] 0] }
+    # emit zig FIRST, from the pristine schematic (running events would mutate
+    # switch state).
+    set f [file join [tcltest::temporaryDirectory] zt[pid].zig]
+    set fh [open $f w]
+    puts $fh [schem::emit $s zig -transient -duration $dur -dt $dt -events $events]
+    close $fh
     # engine rows
-    set d [$s run -duration $dur -dt $dt -record $terms]
+    set d [$s run -duration $dur -dt $dt -record $terms -events $events]
     set erows {}
     set nt [llength [dict get $d t]]
     for {set i 0} {$i < $nt} {incr i} {
@@ -68,8 +74,6 @@ proc tranMatch {s dur dt} {
         lappend erows $row
     }
     # zig rows
-    set f [file join [tcltest::temporaryDirectory] zt[pid].zig]
-    set fh [open $f w] ; puts $fh [schem::emit $s zig -transient -duration $dur -dt $dt] ; close $fh
     set out [exec {*}[zigExe] run $f] ; file delete $f
     set zrows {}
     foreach line [split $out \n] {
@@ -295,5 +299,12 @@ test zig-tran-oscillator {emitted Zig transient matches the engine's relay oscil
     $s add battery B -emf 12 ; $s add ground GND ; $s add relay K -coil 100 -pickup 0.05
     $s wire B.pos K.com ; $s wire K.nc K.c1 ; $s wire K.c2 GND.t ; $s wire B.neg GND.t
 } -body { tranMatch $s 0.012 0.001 } -cleanup {$s destroy} -result ok
+
+test zig-tran-events {emitted Zig honours timed stimulus (-events), matching the engine} -constraints zig -setup {
+    set s [schem::new ev]
+    $s add battery B -emf 10 ; $s add ground GND ; $s add switch SW -state open
+    $s add resistor R -r 100 ; $s add capacitor C -c 1e-3
+    $s wire B.pos SW.a ; $s wire SW.b R.a ; $s wire R.b C.a ; $s wire C.b GND.t ; $s wire B.neg GND.t
+} -body { tranMatch $s 0.01 0.001 {0.003 {close SW}} } -cleanup {$s destroy} -result ok
 
 cleanupTests

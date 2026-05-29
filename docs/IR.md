@@ -71,14 +71,16 @@ Two backends ship today:
     batteries with ESR, switches, relays, diodes, ammeters, gauged wires,
     fuses/breakers, transformer windings (shorts at DC), inductors (a DC
     short), capacitors (open).
-  - **Transient** (`schem emit zig FILE -transient -duration T -dt DT`) — a
-    time-stepping solver with backward-Euler companion models (capacitors
-    with ESR/leakage, inductors and inductive relay coils with winding R),
-    Newton for diodes each step, and relays switching with the one-step lag,
-    propagation delay and hysteresis — exactly the engine's transient
-    analyser. It prints a table of node voltages over time. (Transformers in
-    transient, the `i2t` trip curve and timed `-events` stimulus are the
-    remaining edges; the IR carries their data for when they are added.)
+  - **Transient** (`schem emit zig FILE -transient -duration T -dt DT
+    ?-events {t {op SW} …}?`) — a time-stepping solver with backward-Euler
+    companion models (capacitors with ESR/leakage, inductors and inductive
+    relay coils with winding R), Newton for diodes each step, relays switching
+    with the one-step lag, propagation delay and hysteresis, and timed
+    **stimulus** (switches/buttons operated on a schedule) — the engine's
+    transient analyser. It prints a table of node voltages over time. Two
+    niches are not emitted in transient: transformer mutual coupling and
+    mid-run protective tripping (a fuse/breaker conducts as intact); the
+    engine covers both. Nothing diverges silently within scope.
 - **`dcref`** — a reference backend, in Tcl, that solves the DC operating
   point *straight from the IR* (the same lowering the emitters use). It proves
   the IR carries enough to reproduce the solve, and is the oracle the code
@@ -125,7 +127,7 @@ checked against the engine.
 
 The IR is the foundation for running very large grids at full speed (compile
 once, run native) and the natural home for a compiled, fill-reduced
-elimination schedule. The remaining transient edges are timed `-events`
-stimulus, the `i2t` trip curve and transformers-in-transient — all
-extensions, no IR or source change. After that: more targets (C / WASM /
-HDL), each a sibling proc over the same IR.
+elimination schedule. The remaining transient edges (transformer mutual
+coupling, mid-run protective tripping) are extensions, no IR or source
+change. After that: more targets (C / WASM / HDL), each a sibling proc over
+the same IR.

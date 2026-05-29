@@ -240,16 +240,17 @@ proc ::schem::backend::Zf {v} {
 proc ::schem::backend::zig {cir args} {
     # schem::emit $s zig                       -> DC operating point
     # schem::emit $s zig -transient -duration T -dt DT  -> transient stepper
-    set transient 0 ; set duration 0.01 ; set dt 1e-4
+    set transient 0 ; set duration 0.01 ; set dt 1e-4 ; set events {}
     for {set i 0} {$i < [llength $args]} {incr i} {
         switch -- [lindex $args $i] {
             -transient { set transient 1 }
             -duration  { set duration [lindex $args [incr i]] }
             -dt        { set dt [lindex $args [incr i]] }
+            -events    { set events [lindex $args [incr i]] }
             default    { return -code error "zig: unknown option [lindex $args $i]" }
         }
     }
-    if {$transient} { return [::schem::backend::ZigTran $cir $duration $dt] }
+    if {$transient} { return [::schem::backend::ZigTran $cir $duration $dt $events] }
     variable ::schem::RSMALL
     set L [LowerDC $cir]
     set N [dict get $L n] ; set SZ [dict get $L sz]
@@ -465,7 +466,7 @@ proc ::schem::backend::zig {cir args} {
 # table of node voltages over time.  (Transformers in transient, the i2t
 # trip curve and timed -events stimulus are not emitted yet; the IR carries
 # their data for when they are.)
-proc ::schem::backend::ZigTran {cir duration dt} {
+proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
     variable ::schem::RSMALL
     set N [dict get $cir nodes count]
     set nsteps [expr {int(ceil($duration/$dt))}]
@@ -475,13 +476,18 @@ proc ::schem::backend::ZigTran {cir duration dt} {
     # ideal wires only.
     set conds {} ; set branches {} ; set relays {} ; set diodes {}
     set caps {} ; set inds {} ; set coils {}
+    set switches {} ; set swidx [dict create]   ;# runtime switch state for -events
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
         switch [dict get $e class] {
             conductance { lappend conds [list [dict get $nd a] [dict get $nd b] [dict get $e g] $nm] }
             source      { lappend branches [list [dict get $nd pos] [dict get $nd neg] [dict get $e emf] [dict get $e rs] $nm] }
-            switch      { if {[dict get $e state] in {closed pressed}} { lappend conds [list [dict get $nd a] [dict get $nd b] [expr {1.0/[dict get $e r_closed]}] $nm] } }
+            switch {
+                dict set swidx $nm [llength $switches]
+                lappend switches [list [dict get $nd a] [dict get $nd b] [dict get $e r_closed] \
+                    [expr {[dict get $e state] in {closed pressed} ? "true" : "false"}]]
+            }
             meter       { lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] }
             protective  { if {[dict get $e state] in {intact closed}} { lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] } }
             conductor   { set r [dict get $e r] ; if {$r > 0} { lappend conds [list [dict get $nd a] [dict get $nd b] [expr {1.0/$r}] $nm] } else { lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] } }
@@ -513,6 +519,16 @@ proc ::schem::backend::ZigTran {cir duration dt} {
     set SZ [expr {$N + [llength $branches]}]
     set NR [llength $relays] ; set ND [llength $diodes]
     set NC [llength $caps] ; set NL [llength $inds] ; set NK [llength $coils]
+    set NS [llength $switches]
+    # compile the -events stimulus into {step swIndex newState} actions
+    set actions {}
+    foreach {t op} $events {
+        lassign $op verb swname
+        if {![dict exists $swidx $swname]} continue
+        set st [expr {int(ceil(($t - 1e-12)/$dt))}]
+        set b [expr {$verb in {close press} ? "true" : "false"}]
+        lappend actions [list $st [dict get $swidx $swname] $b $verb $swname]
+    }
     set name [dict get $cir name]
 
     proc A2 {ty vals} { return "\[[llength $vals]\]$ty{[join $vals {, }]}" }
@@ -527,8 +543,15 @@ proc ::schem::backend::ZigTran {cir duration dt} {
     lappend S "const DT: f64 = [Zf $dt];"
     lappend S "const NSTEPS: usize = $nsteps;"
     lappend S "const RSMALL: f64 = [Zf $RSMALL];"
-    lappend S "const NR: usize = $NR; const ND: usize = $ND; const NC: usize = $NC; const NL: usize = $NL; const NK: usize = $NK;"
+    lappend S "const NR: usize = $NR; const ND: usize = $ND; const NC: usize = $NC; const NL: usize = $NL; const NK: usize = $NK; const NS: usize = $NS;"
     lappend S ""
+    # switch state (driven by -events)
+    if {$NS} {
+        set s_a {} ; set s_b {} ; set s_rc {} ; set s_init {}
+        foreach sw $switches { lassign $sw a b rc init ; lappend s_a $a ; lappend s_b $b ; lappend s_rc [Zf $rc] ; lappend s_init $init }
+        lappend S "const s_a = [A2 usize $s_a]; const s_b = [A2 usize $s_b]; const s_rc = [A2 f64 $s_rc];"
+        lappend S "var sw_state = \[NS\]bool{[join $s_init {, }]};"
+    }
     # diode metadata
     if {$ND} {
         set d_a {} ; set d_k {} ; set d_is {} ; set d_n {} ; set d_rs {} ; set d_bv {}
@@ -626,6 +649,9 @@ proc ::schem::backend::ZigTran {cir duration dt} {
     foreach c $conds { lassign $c na nb g nm ; lappend S "    stampG(a, $na, $nb, [Zf $g]); // $nm" }
     set k 0
     foreach br $branches { lassign $br p q emf rs nm ; lappend S "    stampBranch(a, z, [expr {$N+$k}], $p, $q, [Zf $emf], [Zf $rs]); // $nm" ; incr k }
+    if {$NS} {
+        lappend S "    { var w: usize = 0; while (w < NS) : (w += 1) { if (sw_state\[w\]) stampG(a, s_a\[w\], s_b\[w\], 1.0 / s_rc\[w\]); } }"
+    }
     if {$NC} {
         lappend S "    { var c: usize = 0; while (c < NC) : (c += 1) {"
         lappend S "        if (c_rl\[c\] > 0) stampG(a, c_a\[c\], c_b\[c\], 1.0 / c_rl\[c\]);"
@@ -667,6 +693,13 @@ proc ::schem::backend::ZigTran {cir duration dt} {
     lappend S "    var step: usize = 0;"
     lappend S "    while (step <= NSTEPS) : (step += 1) {"
     lappend S "        const tnow = @as(f64, @floatFromInt(step)) * DT;"
+    if {[llength $actions]} {
+        lappend S "        // timed stimulus (-events): operate contacts on schedule"
+        foreach act [lsort -integer -index 0 $actions] {
+            lassign $act st si b verb swname
+            lappend S "        if (step == $st) sw_state\[$si\] = $b; // $verb $swname"
+        }
+    }
     lappend S "        // Newton (diodes) at this step; relay state is from the previous step."
     lappend S "        var newton: usize = 0;"
     lappend S "        while (newton < 100) : (newton += 1) {"

@@ -7,7 +7,7 @@ const SZ: usize = 4;
 const DT: f64 = 0.001;
 const NSTEPS: usize = 12;
 const RSMALL: f64 = 0.001;
-const NR: usize = 1; const ND: usize = 0; const NC: usize = 0; const NL: usize = 0; const NK: usize = 0;
+const NR: usize = 1; const ND: usize = 0; const NC: usize = 0; const NL: usize = 0; const NK: usize = 0; const NS: usize = 0;
 
 const r_c1 = [1]usize{2}; const r_c2 = [1]usize{0}; const r_rc = [1]f64{100.0};
 const r_pu = [1]f64{0.05}; const r_do = [1]f64{0.005}; const r_dl = [1]f64{0.0};
