@@ -227,6 +227,37 @@ oo::class create ::schem::Schematic {
     method components {} { return [dict keys $Comp] }
     method typeof {name} { return [dict get $Comp $name type] }
 
+    # terminals -- the pin names a placed component exposes.
+    method terminals {name} {
+        variable ::schem::META
+        return [dict get $META([dict get $Comp $name type]) terminals]
+    }
+
+    # remove -- delete a component and every coupling/harness member that
+    # touched it.  (The editor's delete verb.)
+    method remove {name} {
+        if {![dict exists $Comp $name]} { return -code error "no such component \"$name\"" }
+        dict unset Comp $name
+        set kept {}
+        foreach co $Conns {
+            lassign $co a b
+            if {[lindex [split $a .] 0] eq $name || [lindex [split $b .] 0] eq $name} continue
+            lappend kept $co
+        }
+        set Conns $kept
+        dict for {hn h} $Harness {
+            set mem {}
+            foreach pr [dict get $h members] {
+                lassign $pr a b
+                if {[lindex [split $a .] 0] eq $name || [lindex [split $b .] 0] eq $name} continue
+                lappend mem $pr
+            }
+            if {[llength $mem] == 0} { dict unset Harness $hn } \
+            else { dict set Harness $hn [dict replace $h members $mem] }
+        }
+        return
+    }
+
     # ---- terminal helpers ------------------------------------------
 
     method ResolveTerm {term} {

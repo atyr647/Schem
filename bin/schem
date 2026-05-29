@@ -5,6 +5,8 @@
 #   schem save   BUILDER.tcl OUT.schem  build a schematic and save it (binary)
 #   schem open   FILE.schem             open a .schem file in the viewer
 #   schem view   FILE.schem             alias for open
+#   schem edit   [FILE.schem]           open the interactive workbench (editor)
+#   schem validate FILE.schem           run the anti-spaghetti / electrical checks
 #   schem netlist FILE.schem            print the derived netlist / IR (cache)
 #   schem -i                            interactive shell with the API loaded
 #   schem -v                            print version
@@ -20,12 +22,56 @@ source [file join $bindir .. src schem.tcl]
 catch {fconfigure stdout -encoding utf-8}   ;# box-drawing views need UTF-8
 
 proc usage {} {
-    puts stderr "usage: schem <run|save|open|view|netlist> ARGS | -i | -v"
-    puts stderr "       schem run    BUILDER.tcl"
-    puts stderr "       schem save   BUILDER.tcl OUT.schem"
-    puts stderr "       schem open   FILE.schem"
+    puts stderr "usage: schem <run|save|open|edit|validate|netlist> ARGS | -i | -v"
+    puts stderr "       schem run     BUILDER.tcl"
+    puts stderr "       schem save    BUILDER.tcl OUT.schem"
+    puts stderr "       schem open    FILE.schem"
+    puts stderr "       schem edit    \[FILE.schem\]"
+    puts stderr "       schem validate FILE.schem"
     puts stderr "       schem netlist FILE.schem"
     exit 2
+}
+
+# ReadKey -- read one key event from stdin, decoding arrow escapes and the
+# common control keys into the tokens EditorSession understands.
+proc ReadKey {} {
+    set c [read stdin 1]
+    if {$c eq ""} { return EOF }
+    scan $c %c code
+    if {$code == 27} {                       ;# ESC -- maybe an arrow
+        set c2 [read stdin 1]
+        if {$c2 eq "\["} {
+            switch -- [read stdin 1] {
+                A {return UP} B {return DOWN} C {return RIGHT} D {return LEFT}
+                default {return ESC}
+            }
+        }
+        return ESC
+    }
+    if {$code == 13 || $code == 10} { return ENTER }
+    if {$code == 127 || $code == 8} { return BACKSPACE }
+    if {$c eq " "} { return SPACE }
+    return $c
+}
+
+# EditLoop -- the terminal front end for the editor.  Renders a full frame,
+# reads a key, feeds it to the session, repeats until quit.  Uses raw mode
+# on a real TTY; degrades to plain byte reads when stdin is a pipe (so the
+# editor can be scripted/tested without a terminal).
+proc EditLoop {ed} {
+    set isTty [expr {![catch {exec stty -g <@stdin} saved]}]
+    if {$isTty} { catch {exec stty raw -echo <@stdin} }
+    fconfigure stdin -translation binary
+    catch {fconfigure stdout -encoding utf-8}
+    while {1} {
+        if {$isTty} { puts -nonewline "\033\[H\033\[2J" }
+        puts [$ed render] ; flush stdout
+        if {[$ed quit?]} break
+        set k [ReadKey]
+        if {$k eq "EOF"} break
+        $ed key $k
+    }
+    if {$isTty} { catch {exec stty $saved <@stdin} }
 }
 
 # RunBuilder -- source a builder file with `s` pre-bound; returns the schematic.
@@ -78,6 +124,25 @@ switch -- $cmd {
         if {[llength $rest] != 1} { usage }
         set s [schem::load [lindex $rest 0]]
         puts [$s netlistText]
+        exit 0
+    }
+
+    validate {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s validateText]
+        exit 0
+    }
+
+    edit {
+        if {[llength $rest] > 1} { usage }
+        if {[llength $rest] == 1} {
+            set ed [schem::EditorSession new [schem::load [lindex $rest 0]]]
+            $ed setFile [lindex $rest 0]
+        } else {
+            set ed [schem::EditorSession new]
+        }
+        EditLoop $ed
         exit 0
     }
 

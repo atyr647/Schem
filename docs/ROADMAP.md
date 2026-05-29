@@ -62,15 +62,11 @@ interpreter · (future) WASM · C · HDL · ...
 | Derived netlist / IR cache | ✅ | `src/netlist.tcl` |
 | Interpreter — Modified Nodal Analysis over the derived graph; obeys Ohm / Kirchhoff / continuity; relays, diodes, fuses, breakers, R/C/L; transient | ✅ | `src/simulate.tcl`, `src/transient.tcl`, `src/solver.tcl` |
 | Component → Circuit → Panel → Grid scale | ✅ | `src/hierarchy.tcl` |
+| Validator — anti-spaghetti rules (ground/source, isolated parts, floating terminals, terminal contracts, layers, board limits) + electrical faults | ✅ | `src/validate.tcl` |
+| Editor — interactive workbench authoring the object model (place / wire / param / solve / validate) reading & writing `.schem` | ✅ | `src/editor.tcl`, `bin/schem edit` |
 
 ## Next
 
-- **Editor** — an interactive workbench (TUI / GUI) that *authors* the
-  object model directly (drag parts, wire terminals); the `.schem` file is
-  what it reads and writes.  The current Tcl workbench API is the
-  programmatic stand-in.
-- **Validator** — enforce the anti-spaghetti rules (board limits, terminal
-  contracts `IN/OUT/FAULT/GND`, layer checks) against the object model.
 - **Standard-cell library** — relay logic (gates, latch, flip-flop) up to a
   counter / adder, proving the computational-universality claim, plus the
   manifesto's standard circuits (debounce, oscillator, timer, …).

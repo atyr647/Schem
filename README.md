@@ -11,8 +11,9 @@ current flow, exactly as it does on a real workbench.
 
 - **The language definition** lives in [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
 - **The architecture** (source = schematic object model; netlist = derived
-  cache) is in [`docs/ROADMAP.md`](docs/ROADMAP.md), and the binary
-  `.schem` file is described in [`docs/FORMAT.md`](docs/FORMAT.md).
+  cache) is in [`docs/ROADMAP.md`](docs/ROADMAP.md), the binary `.schem`
+  file in [`docs/FORMAT.md`](docs/FORMAT.md), and the interactive editor +
+  validator in [`docs/EDITOR.md`](docs/EDITOR.md).
 - **The interpreter** is a Tcl circuit engine in [`src/`](src/) that
   reads a schematic and solves it with real circuit theory:
   continuity (closed loops), Ohm's law, Kirchhoff's current & voltage
@@ -42,6 +43,9 @@ Schematic: voltage_divider_schem
 ┌───────────┐       ┌───────────┐       ┌───────────┐       ┌───────────┐
 │B:battery  │──────▶│R1:resistor│──────▶│R2:resistor│──────▶│GND:ground │
 └───────────┘       └───────────┘       └───────────┘       └───────────┘
+
+$ schem edit divider.schem        # author it interactively (place/wire/solve)
+$ schem validate divider.schem    # anti-spaghetti + electrical checks
 ```
 
 This is not a drawing that *looks* electrical — every result is computed
@@ -124,11 +128,12 @@ checks each fundamental rule against a hand-computed value:
 | Scale hierarchy            | a circuit → panel → grid flattens and solves      |
 | Wire ampacity              | a gauged wire over its rating raises a fault      |
 
-Run them (engine + artifact layer):
+Run them (49 tests total):
 
 ```sh
-$ tclsh tests/test_schem.tcl     # 23 tests: the electrical laws
-$ tclsh tests/test_format.tcl    # 9 tests: binary round-trip, harness, IR, viewer
+$ tclsh tests/test_schem.tcl     # 23: the electrical laws
+$ tclsh tests/test_format.tcl    #  9: binary round-trip, harness, IR, viewer
+$ tclsh tests/test_tools.tcl     # 17: validator + interactive editor
 ```
 
 ## Examples
@@ -157,7 +162,9 @@ src/hierarchy.tcl     Component → Circuit → Panel → Grid
 src/format.tcl        binary .schem save / load
 src/netlist.tcl       derived netlist / IR (build cache)
 src/render.tcl        the viewer (draws the schematic as a wired diagram)
-bin/schem             command-line front end (run/save/open/netlist)
+src/validate.tcl      anti-spaghetti + electrical validation
+src/editor.tcl        the interactive workbench (EditorSession)
+bin/schem             CLI front end (run/save/open/edit/validate/netlist)
 examples/             runnable schematics
-tests/                regression suites (engine + artifact layer)
+tests/                regression suites (engine, artifact, tools)
 ```
