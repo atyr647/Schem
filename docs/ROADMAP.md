@@ -66,12 +66,10 @@ interpreter · (future) WASM · C · HDL · ...
 | Editor — interactive workbench authoring the object model (place / wire / param / solve / validate) reading & writing `.schem` | ✅ | `src/editor.tcl`, `bin/schem edit` |
 | Relay standard-cell library — functionally-complete gates, XOR, half/full adder, seal-in latch; proves computational universality by truth table | ✅ | `lib/logic.tcl` |
 | Engine: sequential/bistable support — persistent relay state (latch memory), parallel-contact handling, short-by-current and oscillation detection | ✅ | `src/simulate.tcl` |
+| Clocked sequential logic — gated D latch, rising-edge (master/slave) D flip-flop, toggle flip-flop and a 2-bit ripple counter; clocked in DC via persistent state and free-running in the transient analyser | ✅ | `lib/logic.tcl` |
 
 ## Next
 
-- **Clocked sequential logic** — edge-triggered flip-flops and a binary
-  counter, driven by the transient analyser (the level-based latch is
-  done; a counter needs clock edges, i.e. timing).
 - **Standard circuits** — the manifesto's named blocks (debounce, timer,
   pulse generator, relay bank) as further library cells.
 - **Backends** — emit the derived netlist/IR to other targets (C / WASM /

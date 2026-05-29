@@ -57,6 +57,35 @@ power-on condition). That persistence is the model of memory — the same
 mechanism that lets the transient analyser run relay oscillators and
 timers.
 
+## Clocked (sequential) logic
+
+Combinational gates plus the latch's memory are enough for a state machine,
+but a *level* latch is transparent — it tracks its data the whole time the
+gate is open. A machine wants to sample on a **clock edge**. Edge-triggering
+is built the way relay computers did it: two oppositely-gated latches in
+series (**master / slave**). The master is transparent while the clock is
+low and the slave while it is high, so on the rising edge the master freezes
+the value it last saw and the slave copies it — `Q` takes `D`'s value *at the
+edge* and ignores `D` afterward.
+
+| cell | construction |
+|------|--------------|
+| `d_latch`     | a **gated** latch: a clock relay's contact (`KC`) admits the data only while open; set/seal/reset are the latch above, now clock-gated. Transparent while `CLK` HIGH (`gate no`) or LOW (`gate nc`). |
+| `d_flipflop`  | master `d_latch` (transparent on `CLK` low) → slave `d_latch` (transparent on `CLK` high); rising-edge triggered |
+| `t_flipflop`  | a `d_flipflop` with `D` wired back to its own `¬Q` → `Q` toggles every edge |
+| `counter2`    | two `t_flipflop`s; stage 1 is clocked by stage 0's `¬Q` → a 2-bit ripple counter, `Q1Q0` = 00,01,10,11,00,… |
+
+The timing model is the engine's **persistent relay state**: each `solve`
+settles one clock event and the seal-in hold carries a bit between solves,
+so clocking is just `CLK` low → `solve` → `CLK` high → `solve`. The same
+cells also run in the **transient analyser**, where a self-interrupting
+relay is a free-running clock and the count advances in real (stepped) time
+— a few `dt` after each edge, exactly like a real relay counter with finite
+contact-propagation delay.
+
+`counter2` is a **16-relay** machine (two flip-flops of two latches of four
+relays), and it counts correctly purely by Ohm's and Kirchhoff's laws.
+
 ## Cell catalog
 
 | builder | ports | function |
@@ -69,6 +98,10 @@ timers.
 | `xor_gate`   | `A B · OUT · VCC · GND`      | `OUT = A⊕B` |
 | `half_adder` | `A B · SUM CARRY · VCC · GND`| 1-bit add |
 | `full_adder` | `A B CIN · SUM COUT · VCC · GND` | 1-bit add with carry |
+| `d_latch`    | `D CLK · Q OUT NQ · VCC · GND` | gated 1-bit latch |
+| `d_flipflop` | `D CLK · Q NQ · VCC · GND`   | rising-edge D flip-flop |
+| `t_flipflop` | `CLK · Q NQ · VCC · GND`     | toggle (÷2) flip-flop |
+| `counter2`   | `CLK · Q0 Q1 · VCC · GND`    | 2-bit binary counter |
 | `sr_latch`   | `Q · VCC · GND` (+ `SET` button, `RST` switch) | 1 bit of memory |
 
 ## Usage

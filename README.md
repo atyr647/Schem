@@ -129,14 +129,16 @@ checks each fundamental rule against a hand-computed value:
 | Scale hierarchy            | a circuit → panel → grid flattens and solves      |
 | Wire ampacity              | a gauged wire over its rating raises a fault      |
 | **Computational universality** | relay gates → XOR → an 18-relay **full adder**; a seal-in **latch** holds a bit |
+| **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 
-Run them (59 tests total):
+Run them (67 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 23: the electrical laws
 $ tclsh tests/test_format.tcl    #  9: binary round-trip, harness, IR, viewer
 $ tclsh tests/test_tools.tcl     # 17: validator + interactive editor
 $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
+$ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 ```
 
 ## Examples
@@ -149,6 +151,7 @@ $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 | `examples/rc_timer.schem.tcl`          | a capacitor timer (transient)                |
 | `examples/relay_oscillator.schem.tcl`  | an emergent relay oscillator (transient)     |
 | `examples/relay_logic.tcl`             | relay gates, a full adder, and a latch       |
+| `examples/relay_counter.tcl`           | flip-flops and a 2-bit binary counter        |
 
 ## Repository layout
 
@@ -171,5 +174,5 @@ src/editor.tcl        the interactive workbench (EditorSession)
 lib/logic.tcl         relay standard-cell library (gates, adder, latch)
 bin/schem             CLI front end (run/save/open/edit/validate/netlist)
 examples/             runnable schematics
-tests/                regression suites (engine, artifact, tools, logic)
+tests/                regression suites (engine, artifact, tools, logic, sequential)
 ```

@@ -170,6 +170,107 @@ proc ::schem::lib::full_adder {{name fadd}} {
     return $c
 }
 
+# ====================================================================
+#  Clocked (sequential) logic -- the level latch gains a clock.
+# ====================================================================
+#
+# The sr_latch above is level memory.  A *clocked* cell only samples its
+# data when a clock permits it; chaining two oppositely-gated latches
+# (master / slave) makes the cell edge-triggered, and edge-triggering is
+# what lets flip-flops chain into a counter without racing.  These cells
+# are still nothing but relay contacts -- the clock is just another coil.
+
+# d_latch -- a gated (level-sensitive) D latch.  Ports: D CLK Q OUT NQ VCC GND.
+# `gate` selects clock polarity: "no" = transparent while CLK HIGH (the
+# default), "nc" = transparent while CLK LOW (used for a master stage).
+#
+# Topology (all relay contacts, no "if"):
+#   clock gate   VCC -> KC.<gate> -> KD.com            (data only passes when gated)
+#   set   (CLK&D)   KD.no  -> KL.c1                     (energise the latch)
+#   reset (CLK&~D)  KD.nc  -> KR.coil                   (a reset-detect relay)
+#   seal  (hold)  VCC -> KL.no -> KR.nc -> KL.c1        (self-hold unless resetting)
+#   Q  = KL.c1 (coil node: ~VCC latched, ~0 idle);  NQ = KL's free NC contact.
+proc ::schem::lib::d_latch {{name dlatch} {gate no}} {
+    variable COIL ; variable PICK ; variable PULL
+    set c [::schem::circuit $name]
+    Rails $c
+    foreach r {KC KD KR KL} {
+        $c add relay $r -coil $COIL -pickup $PICK
+        $c wire $r.c2 GR.t
+    }
+    $c expose CLK KC.c1
+    $c expose D   KD.c1
+    # Clock gate: VCC reaches the data contact only through KC's chosen throw.
+    $c wire VR.t KC.com
+    $c wire KC.$gate KD.com
+    # Set path (gate AND D): drive the latch coil node directly.
+    $c wire KD.no KL.c1
+    # Reset detect (gate AND ~D): energise KR, whose NC contact breaks the seal.
+    $c wire KD.nc KR.c1
+    # Seal-in hold path, interrupted by KR during a reset.
+    $c wire VR.t KL.com
+    $c wire KL.no KR.com
+    $c wire KR.nc KL.c1
+    # Outputs: Q is the latch coil node; NQ comes from KL's spare NC contact.
+    $c expose Q   KL.c1
+    $c expose OUT KL.c1
+    $c add resistor PN -r $PULL
+    $c wire KL.nc PN.a ; $c wire PN.b GR.t
+    $c expose NQ PN.a
+    return $c
+}
+
+# d_flipflop -- a rising-edge-triggered D flip-flop (master/slave).  The
+# master latch is transparent while CLK is LOW (so it tracks D); the slave
+# is transparent while CLK is HIGH.  On the rising edge the master freezes
+# the value it last saw and the slave copies it -- so Q takes D's value at
+# the clock edge and is immune to D changing afterwards.
+# Ports: D CLK Q NQ VCC GND.
+proc ::schem::lib::d_flipflop {{name dff}} {
+    set c [::schem::circuit $name]
+    Rails $c
+    set M [$c instantiate [d_latch M nc] M]   ;# master: transparent on CLK low
+    set S [$c instantiate [d_latch S no] S]   ;# slave:  transparent on CLK high
+    RailUp $c $M ; RailUp $c $S
+    Fan $c CLK ICK [list [dict get $M CLK] [dict get $S CLK]]
+    $c expose D [dict get $M D]
+    $c wire [dict get $M Q] [dict get $S D]   ;# master Q feeds slave D
+    $c expose Q  [dict get $S Q]
+    $c expose NQ [dict get $S NQ]
+    return $c
+}
+
+# t_flipflop -- a toggle flip-flop: Q inverts on every rising clock edge.
+# It is just a D flip-flop with D wired back to its own ~Q.  Ports: CLK Q NQ.
+proc ::schem::lib::t_flipflop {{name tff}} {
+    set c [::schem::circuit $name]
+    Rails $c
+    set FF [$c instantiate [d_flipflop FF] FF]
+    RailUp $c $FF
+    $c wire [dict get $FF NQ] [dict get $FF D]   ;# D <- ~Q : toggle each edge
+    $c expose CLK [dict get $FF CLK]
+    $c expose Q   [dict get $FF Q]
+    $c expose NQ  [dict get $FF NQ]
+    return $c
+}
+
+# counter2 -- a 2-bit asynchronous (ripple) binary counter.  Stage 0 toggles
+# on the external clock; stage 1 is clocked by stage 0's ~Q, so it advances
+# when bit 0 falls (1 -> 0).  The count Q1Q0 runs 00,01,10,11,00,...
+# Ports: CLK Q0 Q1 VCC GND.
+proc ::schem::lib::counter2 {{name cnt2}} {
+    set c [::schem::circuit $name]
+    Rails $c
+    set F0 [$c instantiate [t_flipflop F0] F0]
+    set F1 [$c instantiate [t_flipflop F1] F1]
+    RailUp $c $F0 ; RailUp $c $F1
+    $c expose CLK [dict get $F0 CLK]
+    $c wire [dict get $F0 NQ] [dict get $F1 CLK]   ;# ripple: stage 1 <- ~Q0
+    $c expose Q0 [dict get $F0 Q]
+    $c expose Q1 [dict get $F1 Q]
+    return $c
+}
+
 # sr_latch -- a seal-in (self-holding) relay latch: a 1-bit memory.
 # Pressing SET energises the coil, whose own NO contact then keeps it
 # energised after SET is released; opening the normally-closed RST switch
