@@ -316,6 +316,19 @@ test wire-overload {a gauged wire carrying more than its ampacity faults} -setup
     expr {"wire-overload" in $kinds}
 } -cleanup {$s destroy} -result 1
 
+test wire-resistance {a long gauged run drops real voltage (AWG ohms/m)} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 12 ; $s add ground GND ; $s add resistor R -r 1
+    # 10 m of 22 AWG (~0.529 ohm) in each leg; load is 1 ohm.
+    $s wire B.pos R.a -awg 22 -len 10
+    $s wire R.b GND.t -awg 22 -len 10
+    $s wire B.neg GND.t
+    $s solve
+} -body {
+    # I = 12 / (1 + 2*0.5292) ~ 5.83 A (not the ideal 12 A).
+    approx [$s current R] [expr {12.0/(1.0 + 2*0.5292)}] 0.02
+} -cleanup {$s destroy} -result ok
+
 # ---- source realism: a battery's internal resistance ---------------------
 
 test esr-voltage-sag {a real source sags under load by I*esr} -setup {
@@ -436,7 +449,6 @@ test continuity-diode {a forward diode conducts, a reverse diode does not} -setu
 } -cleanup {$s destroy} -result {1 0}
 
 # ---- a real high-current load is not mistaken for a short ----------------
-
 test short-vs-load {a legitimate low-resistance load is not flagged as a short} -setup {
     set s [schem::new t]
     # A starter-motor-like load: 100 V, 0.01 ohm source, 0.05 ohm load -> ~1.7 kA.

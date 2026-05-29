@@ -70,10 +70,10 @@ oo::define ::schem::Schematic {
             dict set Comp $newname $comp
         }
         foreach c $cConns {
-            lassign $c a b awg hn
+            lassign $c a b awg hn len
             if {$hn ne {}} { set hn "$prefix/$hn" }
             lappend Conns [list [apply $rename $a $prefix] \
-                                [apply $rename $b $prefix] $awg $hn]
+                                [apply $rename $b $prefix] $awg $hn $len]
         }
         # Carry over the child's harness bundles under the instance prefix.
         dict for {hname h} $cHarness {

@@ -34,7 +34,7 @@
 namespace eval ::schem::fmt {
     variable MAGIC "SCHM"
     variable CONTAINER_VER 1
-    variable MODEL_VER {1 0}
+    variable MODEL_VER {1 1}
 }
 
 # ---- low-level byte buffer writers -------------------------------------
@@ -106,11 +106,12 @@ proc ::schem::save {schem path} {
     set conns [$schem conns]
     ::schem::fmt::PutU32 buf [llength $conns]
     foreach co $conns {
-        lassign $co a b awg hn
+        lassign $co a b awg hn len
         ::schem::fmt::PutStr buf $a
         ::schem::fmt::PutStr buf $b
         ::schem::fmt::PutStr buf $awg
         ::schem::fmt::PutStr buf $hn
+        ::schem::fmt::PutStr buf $len
     }
 
     # Harnesses.
@@ -186,9 +187,13 @@ proc ::schem::load {path} {
         set b   [::schem::fmt::GetStr data idx]
         set awg [::schem::fmt::GetStr data idx]
         set hn  [::schem::fmt::GetStr data idx]
+        set len [::schem::fmt::GetStr data idx]
         # Harness couplings are re-created by the harness records below.
         if {$hn ne {}} continue
-        if {$awg ne {}} { $s wire $a $b -awg $awg } else { $s wire $a $b }
+        set opt {}
+        if {$awg ne {}} { lappend opt -awg $awg }
+        if {$len ne {}} { lappend opt -len $len }
+        $s wire $a $b {*}$opt
     }
 
     set nh [::schem::fmt::GetU32 data idx]

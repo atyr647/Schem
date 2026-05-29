@@ -76,6 +76,15 @@ namespace eval ::schem {
         22 7.0  20 11.0  18 16.0  16 22.0  14 32.0
         12 41.0  10 55.0  8 73.0  6 101.0  4 135.0
     }
+
+    # AWG -> resistance of solid copper (ohms per metre at 20 C).  A gauged
+    # wire given a length (-len) drops voltage and dissipates power according
+    # to this; without a length it is treated as an ideal conductor.
+    variable RESPERM
+    array set RESPERM {
+        22 0.05292  20 0.03326  18 0.02093  16 0.01318  14 0.008286
+        12 0.005211 10 0.003277 8 0.002061  6 0.001296  4 0.0008152
+    }
 }
 
 # ====================================================================
@@ -173,13 +182,17 @@ oo::class create ::schem::Schematic {
         my ResolveTerm $ta
         my ResolveTerm $tb
         set awg ""
+        set len ""
         foreach {k v} $args {
-            if {$k eq "-awg"} { set awg $v } else {
-                return -code error "wire: unknown option $k"
+            switch -- $k {
+                -awg { set awg $v }
+                -len { set len $v }
+                default { return -code error "wire: unknown option $k" }
             }
         }
-        # Coupling tuple: {a b awg harness}. Plain wires carry no harness tag.
-        lappend Conns [list $ta $tb $awg {}]
+        # Coupling tuple: {a b awg harness len}.  Plain wires carry no harness
+        # tag; len (metres) is optional and gives a gauged wire real resistance.
+        lappend Conns [list $ta $tb $awg {} $len]
         return
     }
 

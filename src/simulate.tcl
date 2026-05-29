@@ -91,13 +91,20 @@ oo::define ::schem::Schematic {
     # The list order fixes each branch's column in the matrix.
     method Branches {mode} {
         set br {}
-        # Gauged wires are measurable conductors -> 0 V branches.
+        # Gauged wires are measurable conductors -> branches.  Given a length
+        # they carry their real copper resistance (AWG ohms/m * len) on the
+        # branch row; without one they are ideal 0 V conductors.
+        variable ::schem::RESPERM
         set wi 0
         foreach c $Conns {
-            lassign $c a b awg
+            lassign $c a b awg hn len
             if {$awg ne ""} {
+                set rs 0.0
+                if {$len ne "" && [info exists RESPERM($awg)]} {
+                    set rs [expr {$RESPERM($awg) * double($len)}]
+                }
                 lappend br [dict create owner wire$wi kind wire awg $awg \
-                    p [my NodeOf $a] q [my NodeOf $b] emf 0.0]
+                    p [my NodeOf $a] q [my NodeOf $b] emf 0.0 rs $rs]
             }
             incr wi
         }
