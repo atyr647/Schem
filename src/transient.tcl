@@ -29,16 +29,28 @@ oo::define ::schem::Schematic {
         set duration 0.01
         set dt 1e-4
         set record {}
+        set events {}
         foreach {k v} $args {
             switch -- $k {
                 -duration { set duration $v }
                 -dt       { set dt $v }
                 -record   { set record $v }
+                -events   { set events $v }
                 default   { return -code error "run: unknown option $k" }
             }
         }
         if {$dt <= 0}       { return -code error "run: -dt must be positive" }
         if {$duration <= 0} { return -code error "run: -duration must be positive" }
+
+        # Timed stimulus: a schedule of {time {operation ...} ...} -- the
+        # bench operator working the panel over time (or a cam-timer drum
+        # closing and opening contacts).  Each operation is a method on this
+        # schematic, e.g. {close SW}, {open SW}, {press B}, {release B}.
+        # They only change contact state, never topology, so the node map
+        # built once below stays valid.
+        set sched {}
+        foreach {t op} $events { lappend sched [list [expr {double($t)}] $op] }
+        set sched [lsort -real -index 0 $sched]
 
         my BuildNodes
         set Faults {}
@@ -60,6 +72,13 @@ oo::define ::schem::Schematic {
         set nsteps [expr {int(ceil($duration/$dt))}]
         for {set step 0} {$step <= $nsteps} {incr step} {
             set tnow [expr {$step * $dt}]
+
+            # Apply any scheduled stimulus that is now due (time <= tnow).
+            while {[llength $sched] && [lindex $sched 0 0] <= $tnow + 1e-12} {
+                set ev [lindex $sched 0]
+                set sched [lrange $sched 1 end]
+                my {*}[lindex $ev 1]
+            }
 
             # Build companion models for this step from the stored state.
             set state [dict create diodeV $diodeV]

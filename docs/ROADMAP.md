@@ -67,11 +67,11 @@ interpreter · (future) WASM · C · HDL · ...
 | Relay standard-cell library — functionally-complete gates, XOR, half/full adder, seal-in latch; proves computational universality by truth table | ✅ | `lib/logic.tcl` |
 | Engine: sequential/bistable support — persistent relay state (latch memory), parallel-contact handling, short-by-current and oscillation detection | ✅ | `src/simulate.tcl` |
 | Clocked sequential logic — gated D latch, rising-edge (master/slave) D flip-flop, toggle flip-flop and a 2-bit ripple counter; clocked in DC via persistent state and free-running in the transient analyser | ✅ | `lib/logic.tcl` |
+| Standard panel circuits — on/off-delay timers, one-shot, debounce, flasher, latching relay bank, plus a timed bench stimulus (`run -events`) | ✅ | `lib/standard.tcl`, `src/transient.tcl` |
 
 ## Next
 
-- **Standard circuits** — the manifesto's named blocks (debounce, timer,
-  pulse generator, relay bank) as further library cells.
 - **Backends** — emit the derived netlist/IR to other targets (C / WASM /
   HDL), all from the same schematic source.
-- **Engine** — AC/frequency analysis, more parts, convergence aids.
+- **Engine** — AC/frequency analysis, relay hysteresis (distinct pick-up /
+  drop-out), more parts, convergence aids.

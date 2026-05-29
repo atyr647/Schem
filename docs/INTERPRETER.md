@@ -97,6 +97,21 @@ what lets oscillators oscillate). Returns a dict mapping `t` and each
 recorded signal (a terminal → voltage, or a component → current) to a list
 of samples.
 
+A `-events` schedule works the panel's contacts over time — the bench
+operator (or a cam-timer drum) closing and opening switches as the run
+proceeds:
+
+```tcl
+set data [$s run -duration 0.02 -dt 5e-4 -record {OUT.t} \
+    -events {0.001 {close IN}  0.008 {open IN}}]
+```
+
+Each entry is `time {operation ...}`, where the operation is any method on
+the schematic (`close`/`open` a switch, `press`/`release` a button). Events
+only change contact state, never topology, so the node map stays valid for
+the whole run. This is how the time-based standard circuits (on/off-delay,
+one-shot, debounce) are exercised — see `lib/standard.tcl`.
+
 ## Component catalog
 
 `add TYPE NAME -param value`. Terminals are addressed as `NAME.pin`.
