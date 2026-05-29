@@ -64,13 +64,16 @@ interpreter · (future) WASM · C · HDL · ...
 | Component → Circuit → Panel → Grid scale | ✅ | `src/hierarchy.tcl` |
 | Validator — anti-spaghetti rules (ground/source, isolated parts, floating terminals, terminal contracts, layers, board limits) + electrical faults | ✅ | `src/validate.tcl` |
 | Editor — interactive workbench authoring the object model (place / wire / param / solve / validate) reading & writing `.schem` | ✅ | `src/editor.tcl`, `bin/schem edit` |
+| Relay standard-cell library — functionally-complete gates, XOR, half/full adder, seal-in latch; proves computational universality by truth table | ✅ | `lib/logic.tcl` |
+| Engine: sequential/bistable support — persistent relay state (latch memory), parallel-contact handling, short-by-current and oscillation detection | ✅ | `src/simulate.tcl` |
 
 ## Next
 
-- **Standard-cell library** — relay logic (gates, latch, flip-flop) up to a
-  counter / adder, proving the computational-universality claim, plus the
-  manifesto's standard circuits (debounce, oscillator, timer, …).
+- **Clocked sequential logic** — edge-triggered flip-flops and a binary
+  counter, driven by the transient analyser (the level-based latch is
+  done; a counter needs clock edges, i.e. timing).
+- **Standard circuits** — the manifesto's named blocks (debounce, timer,
+  pulse generator, relay bank) as further library cells.
 - **Backends** — emit the derived netlist/IR to other targets (C / WASM /
   HDL), all from the same schematic source.
-- **Engine** — AC/frequency analysis, more parts, convergence aids,
-  bistable/sequential handling for the logic work.
+- **Engine** — AC/frequency analysis, more parts, convergence aids.

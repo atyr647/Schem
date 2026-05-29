@@ -25,13 +25,15 @@ oo::define ::schem::Schematic {
     # state so validation's trial solve leaves the schematic untouched
     # (e.g. it must not actually blow a fuse).
     method Snapshot {} {
-        return [dict create comp $Comp result $Result faults $Faults diode $Diode]
+        return [dict create comp $Comp result $Result faults $Faults \
+            diode $Diode energized $Energized]
     }
     method RestoreSnapshot {s} {
-        set Comp   [dict get $s comp]
-        set Result [dict get $s result]
-        set Faults [dict get $s faults]
-        set Diode  [dict get $s diode]
+        set Comp      [dict get $s comp]
+        set Result    [dict get $s result]
+        set Faults    [dict get $s faults]
+        set Diode     [dict get $s diode]
+        set Energized [dict get $s energized]
     }
 
     # validate -- return a list of findings for this schematic.

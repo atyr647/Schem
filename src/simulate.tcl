@@ -110,13 +110,6 @@ oo::define ::schem::Schematic {
                         p [my NodeOf $name.pos] q [my NodeOf $name.neg] \
                         emf [expr {double([dict get $pr emf])}]]
                 }
-                switch - button {
-                    set on [expr {[dict get $pr state] in {closed pressed}}]
-                    if {$on} {
-                        lappend br [dict create owner $name kind $type \
-                            p [my NodeOf $name.a] q [my NodeOf $name.b] emf 0.0]
-                    }
-                }
                 breaker {
                     if {[dict get $pr state] eq "closed"} {
                         lappend br [dict create owner $name kind breaker \
@@ -134,16 +127,6 @@ oo::define ::schem::Schematic {
                 ammeter {
                     lappend br [dict create owner $name kind ammeter \
                         p [my NodeOf $name.a] q [my NodeOf $name.b] emf 0.0]
-                }
-                relay {
-                    set energ [my RelayEnergized $name]
-                    if {$energ} {
-                        lappend br [dict create owner $name.contact kind relay-no \
-                            p [my NodeOf $name.com] q [my NodeOf $name.no] emf 0.0]
-                    } else {
-                        lappend br [dict create owner $name.contact kind relay-nc \
-                            p [my NodeOf $name.com] q [my NodeOf $name.nc] emf 0.0]
-                    }
                 }
                 inductor {
                     if {$mode eq "dc"} {
@@ -222,6 +205,19 @@ oo::define ::schem::Schematic {
                     set rc [expr {double([dict get $pr coil])}]
                     if {$rc <= 0} { set rc 1e-9 }
                     apply $stampG [my NodeOf $name.c1] [my NodeOf $name.c2] [expr {1.0/$rc}]
+                    # contacts: com-no closed when energised, com-nc when not.
+                    set gc [expr {1.0/$::schem::RSMALL}]
+                    if {[my RelayEnergized $name]} {
+                        apply $stampG [my NodeOf $name.com] [my NodeOf $name.no] $gc
+                    } else {
+                        apply $stampG [my NodeOf $name.com] [my NodeOf $name.nc] $gc
+                    }
+                }
+                switch - button {
+                    if {[dict get $pr state] in {closed pressed}} {
+                        apply $stampG [my NodeOf $name.a] [my NodeOf $name.b] \
+                            [expr {1.0/$::schem::RSMALL}]
+                    }
                 }
                 capacitor {
                     if {[dict exists $state capState $name]} {
@@ -334,15 +330,18 @@ oo::define ::schem::Schematic {
         set Faults {}
         set state [dict create]
 
-        # Outer fixed-point over stateful devices (relays, fuses, breakers).
-        set energized [dict create]
+        # Seed the fixed-point from the *persistent* relay state.  This is
+        # what gives sequential circuits memory: a sealed-in latch that was
+        # energised stays energised across solves until something resets it.
+        set energized $Energized
+        set seen [dict create]
         for {set outer 0} {$outer < 200} {incr outer} {
             dict set Result energized $energized
             if {[catch {my SolveOP $state} res opts]} {
                 if {[lrange [dict get $opts -errorcode] 0 1] eq {SCHEM SINGULAR}} {
                     lappend Faults [dict create kind short \
                         detail "short circuit or inconsistent sources: ideal conductors form a loop with a source"]
-                    set Result [dict create v {} branches {} faults $Faults short 1]
+                    set Result [dict create v {} branches {} faults $Faults short 1 energized $energized]
                     return $Result
                 }
                 return -options $opts $res
@@ -350,16 +349,42 @@ oo::define ::schem::Schematic {
             set sol [dict get $res sol]
             set branches [dict get $res branches]
             set state [dict get $res state]
-            set x [dict get $sol v]
-            set N [dict get $sol N]
 
             my StoreResult $sol $branches
             set changed [my UpdateDevices $branches energized]
             if {!$changed} break
+
+            # Oscillation: if a relay state recurs without settling, the
+            # circuit is astable (e.g. a buzzer).  Stop and note it -- a
+            # stable DC operating point does not exist; use transient.
+            set key [lsort [dict keys $energized]]
+            if {[dict exists $seen $key]} {
+                lappend Faults [dict create kind astable \
+                    detail "no stable DC state (relay feedback oscillates): use transient analysis (run)"]
+                break
+            }
+            dict set seen $key 1
         }
+        set Energized $energized   ;# persist for the next solve
         set Result [dict replace $Result faults $Faults]
         my CheckOverload
+        my CheckShort
         return $Result
+    }
+
+    # CheckShort -- a source forced to deliver an enormous current (through
+    # near-ideal closed contacts) is shorted; report it as a fault.
+    method CheckShort {} {
+        if {![dict exists $Result imap]} return
+        foreach name [my components] {
+            if {[my typeof $name] ne "battery"} continue
+            if {[dict exists $Result imap $name] && \
+                abs([dict get $Result imap $name]) > $::schem::SHORT_I} {
+                lappend Faults [dict create kind short component $name \
+                    detail "short circuit: source $name delivers [format %.3g [expr {abs([dict get $Result imap $name])}]] A through near-ideal conductors"]
+            }
+        }
+        dict set Result faults $Faults
     }
 
     # StoreResult -- record node voltages and branch currents.
@@ -478,6 +503,12 @@ oo::define ::schem::Schematic {
         if {[dict exists $Result imap $name]} {
             return [expr {abs([dict get $Result imap $name])}]
         }
+        # relay contact current: "<relay>.contact" via its closed throw.
+        if {[string match *.contact $name]} {
+            set rel [string range $name 0 end-8]
+            set thr [expr {[my energized $rel] ? "no" : "nc"}]
+            return [expr {abs([my voltage $rel.com $rel.$thr]) / $::schem::RSMALL}]
+        }
         set type [dict get $Comp $name type]
         set pr [dict get $Comp $name params]
         switch $type {
@@ -488,6 +519,10 @@ oo::define ::schem::Schematic {
             relay {
                 set r [expr {double([dict get $pr coil])}]
                 return [expr {abs([my voltage $name.c1 $name.c2]) / $r}]
+            }
+            switch - button {
+                # closed contact modelled as RSMALL -> I = Vdrop / RSMALL.
+                return [expr {abs([my voltage $name.a $name.b]) / $::schem::RSMALL}]
             }
         }
         return 0.0

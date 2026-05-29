@@ -34,6 +34,15 @@ source [file join [file dirname [info script]] solver.tcl]
 namespace eval ::schem {
     variable VERSION 1.0
 
+    # RSMALL  resistance (ohms) of an ideal closed conductor -- a closed
+    #         switch / button / relay contact.  Modelling these as a tiny
+    #         resistance (rather than an ideal 0 V branch) lets several
+    #         closed contacts share a node without making the nodal matrix
+    #         singular -- essential for relay logic (OR, NAND, latches).
+    # SHORT_I current (amps) above which a source is judged to be shorted.
+    variable RSMALL 1e-3
+    variable SHORT_I 1.0e3
+
     # ----------------------------------------------------------------
     # Component metadata: terminals each part type exposes, and the
     # default parameters for its electrical behaviour.
@@ -76,6 +85,7 @@ oo::class create ::schem::Schematic {
     variable Result   ;# last solve: dict(v branchI ...)
     variable Faults   ;# list of fault descriptions from last solve
     variable Diode    ;# diode name -> last junction voltage (Newton state)
+    variable Energized ;# persistent relay-coil state (enables latch memory)
     variable Name
 
     constructor {{name schematic}} {
@@ -86,9 +96,14 @@ oo::class create ::schem::Schematic {
         set Result [dict create]
         set Faults {}
         set Diode [dict create]
+        set Energized [dict create]
     }
 
     method name {} { return $Name }
+
+    # powerReset -- clear persistent sequential state (relay latches return
+    # to de-energised, the power-on condition).  Does not touch wiring.
+    method powerReset {} { set Energized [dict create] ; return }
 
     # ---- construction (the "workbench") ----------------------------
 

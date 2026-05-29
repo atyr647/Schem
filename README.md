@@ -12,8 +12,9 @@ current flow, exactly as it does on a real workbench.
 - **The language definition** lives in [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
 - **The architecture** (source = schematic object model; netlist = derived
   cache) is in [`docs/ROADMAP.md`](docs/ROADMAP.md), the binary `.schem`
-  file in [`docs/FORMAT.md`](docs/FORMAT.md), and the interactive editor +
-  validator in [`docs/EDITOR.md`](docs/EDITOR.md).
+  file in [`docs/FORMAT.md`](docs/FORMAT.md), the interactive editor +
+  validator in [`docs/EDITOR.md`](docs/EDITOR.md), and the relay logic
+  library (the universality proof) in [`docs/LOGIC.md`](docs/LOGIC.md).
 - **The interpreter** is a Tcl circuit engine in [`src/`](src/) that
   reads a schematic and solves it with real circuit theory:
   continuity (closed loops), Ohm's law, Kirchhoff's current & voltage
@@ -127,13 +128,15 @@ checks each fundamental rule against a hand-computed value:
 | Emergent oscillation       | a relay wired through its own NC contact buzzes   |
 | Scale hierarchy            | a circuit → panel → grid flattens and solves      |
 | Wire ampacity              | a gauged wire over its rating raises a fault      |
+| **Computational universality** | relay gates → XOR → an 18-relay **full adder**; a seal-in **latch** holds a bit |
 
-Run them (49 tests total):
+Run them (59 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 23: the electrical laws
 $ tclsh tests/test_format.tcl    #  9: binary round-trip, harness, IR, viewer
 $ tclsh tests/test_tools.tcl     # 17: validator + interactive editor
+$ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 ```
 
 ## Examples
@@ -145,6 +148,7 @@ $ tclsh tests/test_tools.tcl     # 17: validator + interactive editor
 | `examples/relay_and_gate.schem.tcl`    | relay logic: two coils → logical AND         |
 | `examples/rc_timer.schem.tcl`          | a capacitor timer (transient)                |
 | `examples/relay_oscillator.schem.tcl`  | an emergent relay oscillator (transient)     |
+| `examples/relay_logic.tcl`             | relay gates, a full adder, and a latch       |
 
 ## Repository layout
 
@@ -164,7 +168,8 @@ src/netlist.tcl       derived netlist / IR (build cache)
 src/render.tcl        the viewer (draws the schematic as a wired diagram)
 src/validate.tcl      anti-spaghetti + electrical validation
 src/editor.tcl        the interactive workbench (EditorSession)
+lib/logic.tcl         relay standard-cell library (gates, adder, latch)
 bin/schem             CLI front end (run/save/open/edit/validate/netlist)
 examples/             runnable schematics
-tests/                regression suites (engine, artifact, tools)
+tests/                regression suites (engine, artifact, tools, logic)
 ```
