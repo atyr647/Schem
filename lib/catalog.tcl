@@ -138,6 +138,27 @@ proc ::schem::lib::decoder {{name dec} {n 2}} {
     return $c
 }
 
+# ---- accumulator: a register that adds its input on each clock ----------
+# An n-bit register whose stored value is fed back through an n-bit adder:
+# on each rising CLK edge, Q := Q + IN.  This is the canonical proof of
+# stateful arithmetic -- a running total built from a register, an adder and
+# a clock, nothing else.  Ports: IN0..INn-1 CLK Q0..Qn-1.
+proc ::schem::lib::accumulator {{name acc} {n 4}} {
+    set c [::schem::circuit $name]
+    Rails $c
+    set reg [$c instantiate [register R $n] R]
+    set add [$c instantiate [adder A $n]    A]
+    RailUp $c $reg ; RailUp $c $add
+    $c expose CLK [dict get $reg CLK]
+    for {set i 0} {$i < $n} {incr i} {
+        $c wire [dict get $reg Q$i] [dict get $add A$i]   ;# running total -> adder
+        $c wire [dict get $add S$i] [dict get $reg D$i]   ;# sum -> register input
+        $c expose IN$i [dict get $add B$i]                ;# the value to add in
+        $c expose Q$i  [dict get $reg Q$i]                ;# the running total
+    }
+    return $c
+}
+
 # ---- selector (multiplexer): route one of 2^n inputs to OUT -------------
 # OUT follows the data input I<k> chosen by the address A0..An-1.  Ports:
 # I0..I(2^n-1) A0..An-1 OUT.

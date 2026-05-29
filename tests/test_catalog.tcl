@@ -119,4 +119,22 @@ test counter-3bit {a 3-bit counter steps 0..7 and wraps} -body {
     set seq
 } -result {0 1 2 3 4 5 6 7 0}
 
+# ---- accumulator: stateful arithmetic (a running total) ------------------
+
+test accumulator {Q := Q + IN on each clock} -body {
+    lassign [board accumulator acc 4] s g
+    insw $s $g CLK SCLK
+    for {set i 0} {$i < 4} {incr i} { insw $s $g IN$i SI$i }
+    proc load {s val} { for {set i 0} {$i < 4} {incr i} { setsw $s SI$i [expr {($val>>$i)&1}] } }
+    proc tick {s} { setsw $s SCLK 0 ; $s solve ; setsw $s SCLK 1 ; $s solve }
+    setsw $s SCLK 0 ; $s solve
+    set seq [readbits $s $g Q 4]
+    load $s 1
+    for {set t 0} {$t < 4} {incr t} { tick $s ; lappend seq [readbits $s $g Q 4] }
+    load $s 3
+    for {set t 0} {$t < 2} {incr t} { tick $s ; lappend seq [readbits $s $g Q 4] }
+    $s destroy
+    set seq
+} -result {0 1 2 3 4 7 10}
+
 cleanupTests
