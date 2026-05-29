@@ -34,8 +34,13 @@ generate effects*) using **Modified Nodal Analysis (MNA)**:
 
 3. **Solve.** The dense system is solved by Gaussian elimination with
    partial pivoting (`src/solver.tcl`). A singular system means a
-   degenerate circuit — e.g. an ideal short across a source — and is
-   reported as a **short-circuit fault** rather than a crash.
+   degenerate circuit — e.g. an ideal conductor looping an ideal source —
+   and is reported as a **short-circuit fault** rather than a crash. A
+   *bounded* short is judged after the solve by effective resistance: if a
+   source's terminal voltage divided by its current is on the order of an
+   ideal conductor (a few × `RSMALL`), it is shorted through contacts/wires.
+   A merely large current through a *real* low resistance (a starter motor,
+   a welder) is a legitimate load, not a fault.
 
 4. **Newton loop (nonlinear).** Diodes are nonlinear, so the solve is
    repeated, relinearising each diode about its latest junction voltage
@@ -79,8 +84,8 @@ set s [schem::new myboard]     ;# returns a Schematic command
 | `$s solve` | compute the DC operating point; returns a result dict |
 | `$s probe A.pin` | node voltage at a terminal (V, vs. ground) — the **Probe** |
 | `$s voltage A.pin B.pin` | potential difference (V) — the **Meter** (voltmeter) |
-| `$s current NAME` | current through a part (A) — the **Meter** (ammeter) |
-| `$s continuity A.pin B.pin` | `1/0`: is there a conductive path right now — the **Continuity Tester** |
+| `$s current NAME ?-signed?` | current through a part (A) — the **Meter** (ammeter). Magnitude by default; `-signed` gives the *directed* reading, positive when current flows from the part's first terminal to its second (`a→b`; `pos→neg`; `c1→c2`) |
+| `$s continuity A.pin B.pin` | `1/0`: is there a conductive path right now — the **Continuity Tester**. Traces through every passive conductor (resistors, coils, inductors, closed switches/contacts/breakers/intact fuses) and **forward-biased diodes** (one-way), but not through sources (a real continuity test is done de-energized) |
 | `$s faults` | list of fault dicts (blown fuse, tripped breaker, short, overload) |
 | `$s energized NAME` | `1/0`: is a relay coil picked up |
 | `$s report` | a formatted text summary of the whole solve |

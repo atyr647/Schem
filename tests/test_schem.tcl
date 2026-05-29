@@ -400,4 +400,55 @@ test relay-delay-glitch {a coil glitch shorter than the delay is ignored} -setup
     set hi
 } -cleanup {$s destroy} -result 0
 
+# ---- the Meter reads directional (signed) current -----------------------
+
+test current-signed {signed current gives direction; magnitude is unchanged} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 9 ; $s add ground GND
+    $s add resistor R1 -r 1000 ; $s add resistor R2 -r 2000 ; $s add ammeter M
+    $s wire B.pos R1.a ; $s wire R1.b M.a ; $s wire M.b R2.a
+    $s wire R2.b GND.t ; $s wire B.neg GND.t
+    $s solve
+} -body {
+    # Conventional current flows pos -> R1.a -> ... so it enters R1 at a (+)
+    # and enters the meter at a (+); the battery's pos->neg branch current is
+    # negative on discharge.  Magnitudes are all 3 mA.
+    list [expr {[$s current R1 -signed] > 0}] \
+         [expr {[$s current M  -signed] > 0}] \
+         [expr {[$s current B  -signed] < 0}] \
+         [approx [$s current R1] 0.003 1e-5]
+} -cleanup {$s destroy} -result {1 1 1 ok}
+
+# ---- continuity tester conducts through coils and forward diodes --------
+
+test continuity-coil {a continuity path exists through a relay coil} -setup {
+    set s [schem::new t]
+    $s add ground GND ; $s add relay K
+} -body {
+    $s continuity K.c1 K.c2
+} -cleanup {$s destroy} -result 1
+
+test continuity-diode {a forward diode conducts, a reverse diode does not} -setup {
+    set s [schem::new t]
+    $s add ground GND ; $s add diode D
+} -body {
+    list [$s continuity D.a D.k] [$s continuity D.k D.a]
+} -cleanup {$s destroy} -result {1 0}
+
+# ---- a real high-current load is not mistaken for a short ----------------
+
+test short-vs-load {a legitimate low-resistance load is not flagged as a short} -setup {
+    set s [schem::new t]
+    # A starter-motor-like load: 100 V, 0.01 ohm source, 0.05 ohm load -> ~1.7 kA.
+    $s add battery B -emf 100 -esr 0.01
+    $s add ground GND
+    $s add resistor R -r 0.05
+    $s wire B.pos R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+    $s solve
+} -body {
+    # High current, but the source sees a real 0.05 ohm -- not a short.
+    list [expr {[$s current B] > 1000}] \
+         [expr {"short" in [lmap f [$s faults] {dict get $f kind}]}]
+} -cleanup {$s destroy} -result {1 0}
+
 cleanupTests

@@ -39,9 +39,13 @@ namespace eval ::schem {
     #         resistance (rather than an ideal 0 V branch) lets several
     #         closed contacts share a node without making the nodal matrix
     #         singular -- essential for relay logic (OR, NAND, latches).
-    # SHORT_I current (amps) above which a source is judged to be shorted.
+    # SHORT_R  effective external resistance (ohms) at or below which a
+    #          source is judged to be shorted -- i.e. the source's current
+    #          returns through a near-ideal-conductor path (a few * RSMALL)
+    #          rather than through a real load.  This distinguishes a genuine
+    #          short from a legitimate high-current load (a starter, a welder).
     variable RSMALL 1e-3
-    variable SHORT_I 1.0e3
+    variable SHORT_R 1e-2
 
     # ----------------------------------------------------------------
     # Component metadata: terminals each part type exposes, and the

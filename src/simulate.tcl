@@ -381,16 +381,28 @@ oo::define ::schem::Schematic {
         return $Result
     }
 
-    # CheckShort -- a source forced to deliver an enormous current (through
-    # near-ideal closed contacts) is shorted; report it as a fault.
+    # CheckShort -- a short is an unintended *near-ideal-conductor* path
+    # across a source, not merely a large current: a legitimate low-resistance
+    # load (a starter motor, a welder) can draw thousands of amps and is not a
+    # fault.  So we judge by the effective external resistance the source sees
+    # (terminal voltage / delivered current): if it is on the order of an
+    # ideal conductor (a few * RSMALL), the source is shorted through
+    # contacts/wires rather than feeding a real load.  (A truly ill-posed
+    # short -- ideal conductors looping an ideal source -- is caught earlier
+    # as a singular matrix.)
     method CheckShort {} {
+        variable ::schem::SHORT_R
         if {![dict exists $Result imap]} return
         foreach name [my components] {
             if {[my typeof $name] ne "battery"} continue
-            if {[dict exists $Result imap $name] && \
-                abs([dict get $Result imap $name]) > $::schem::SHORT_I} {
+            if {![dict exists $Result imap $name]} continue
+            set i [expr {abs([dict get $Result imap $name])}]
+            if {$i <= 1e-9} continue
+            set reff [expr {abs([my voltage $name.pos $name.neg]) / $i}]
+            if {$reff <= $::schem::SHORT_R} {
                 lappend Faults [dict create kind short component $name \
-                    detail "short circuit: source $name delivers [format %.3g [expr {abs([dict get $Result imap $name])}]] A through near-ideal conductors"]
+                    reff $reff current $i \
+                    detail "short circuit: source $name sees ~[format %.3g $reff] ohm -- a near-ideal-conductor path delivering [format %.3g $i] A"]
             }
         }
         dict set Result faults $Faults
@@ -542,34 +554,40 @@ oo::define ::schem::Schematic {
     # current -- current through a branch component (battery, switch,
     # fuse, breaker, ammeter, ...) in amps.  For two-terminal resistive
     # parts, computes I = V/R from Ohm's law.
-    method current {name} {
+    #
+    # By default returns the magnitude.  With -signed it returns the
+    # *directed* current the Meter would read: positive when conventional
+    # current flows from the component's first terminal to its second
+    # (a -> b; pos -> neg for a battery; c1 -> c2 for a relay coil).
+    method current {name args} {
+        set signed [expr {"-signed" in $args}]
         if {![dict exists $Result vmap]} { my solve }
+        set i ""
         if {[dict exists $Result imap $name]} {
-            return [expr {abs([dict get $Result imap $name])}]
-        }
-        # relay contact current: "<relay>.contact" via its closed throw.
-        if {[string match *.contact $name]} {
+            set i [dict get $Result imap $name]
+        } elseif {[string match *.contact $name]} {
+            # relay contact current: "<relay>.contact" via its closed throw.
             set rel [string range $name 0 end-8]
             set thr [expr {[my energized $rel] ? "no" : "nc"}]
-            return [expr {abs([my voltage $rel.com $rel.$thr]) / $::schem::RSMALL}]
+            set i [expr {[my voltage $rel.com $rel.$thr] / $::schem::RSMALL}]
+        } else {
+            set type [dict get $Comp $name type]
+            set pr [dict get $Comp $name params]
+            switch $type {
+                resistor {
+                    set i [expr {[my voltage $name.a $name.b] / double([dict get $pr r])}]
+                }
+                relay {
+                    set i [expr {[my voltage $name.c1 $name.c2] / double([dict get $pr coil])}]
+                }
+                switch - button {
+                    # closed contact modelled as RSMALL -> I = Vdrop / RSMALL.
+                    set i [expr {[my voltage $name.a $name.b] / $::schem::RSMALL}]
+                }
+                default { return 0.0 }
+            }
         }
-        set type [dict get $Comp $name type]
-        set pr [dict get $Comp $name params]
-        switch $type {
-            resistor {
-                set r [expr {double([dict get $pr r])}]
-                return [expr {abs([my voltage $name.a $name.b]) / $r}]
-            }
-            relay {
-                set r [expr {double([dict get $pr coil])}]
-                return [expr {abs([my voltage $name.c1 $name.c2]) / $r}]
-            }
-            switch - button {
-                # closed contact modelled as RSMALL -> I = Vdrop / RSMALL.
-                return [expr {abs([my voltage $name.a $name.b]) / $::schem::RSMALL}]
-            }
-        }
-        return 0.0
+        return [expr {$signed ? $i : abs($i)}]
     }
 
     # continuity -- is there a conductive path between two terminals
@@ -585,6 +603,11 @@ oo::define ::schem::Schematic {
             dict lappend adj $a $b
             dict lappend adj $b $a
         }}
+        # dlink: a one-way conductive edge (a -> b only), for diodes.
+        set dlink {{a b} {
+            upvar 1 adj adj
+            dict lappend adj $a $b
+        }}
         foreach c $Conns {
             lassign $c a b awg
             apply $link $a $b
@@ -599,7 +622,9 @@ oo::define ::schem::Schematic {
                 fuse    { if {[dict get $pr state] eq "intact"} { apply $link $name.a $name.b } }
                 ammeter { apply $link $name.a $name.b }
                 resistor - inductor { apply $link $name.a $name.b }
+                diode   { apply $dlink $name.a $name.k }
                 relay {
+                    apply $link $name.c1 $name.c2
                     if {[my RelayEnergized $name]} { apply $link $name.com $name.no } \
                     else { apply $link $name.com $name.nc }
                 }
