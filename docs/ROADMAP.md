@@ -73,19 +73,22 @@ interpreter · (future) WASM · C · HDL · ...
 | Circuit catalog — reusable assemblies: register, n-bit adder, counter, decoder, selector (mux) | ✅ | `lib/catalog.tcl` |
 | Proven machines — an accumulator (stateful arithmetic), an instruction sequencer (one-hot control phases), a complete computing panel (a controlled multiplier that halts), and a grid of panels (the full Component→Circuit→Panel→Grid hierarchy) | ✅ | `lib/catalog.tcl`, `examples/` |
 
+| Circuit IR — a lowered, analysis-agnostic compile target: every element classified by electrical role with its derived quantities and control semantics, plus a node table, ports and analysis flags | ✅ | `src/compile.tcl` |
+| Backend interface — interchangeable emitters consuming the IR (`schem::emit`); a Zig backend (DC operating-point solver) and a Tcl `dcref` reference backend verified against the engine | ✅ | `src/backend.tcl` |
+
 ## Next
 
 The language is electrically and computationally complete, the engine has
-real device physics, the solver scales to large assemblies, and a programmable
-machine has been built and run.  What remains is *targets*, not language:
+real device physics with a sparse fill-reduced solver, a programmable machine
+has been built and run, and the schematic now compiles to a backend-agnostic
+Circuit IR with a first (Zig) emitter.  What remains is *more backend*, not
+language:
 
-- **Circuit IR** — a lowered, analysis-agnostic compile target (every
-  element classified by electrical role with its derived quantities and
-  control semantics) that backends consume.  The single foundation for:
-- **Backends** — emit the Circuit IR to other targets (C / WASM / HDL), all
-  from the same schematic source.  This is also the path to running very
-  large machines (a complete computing grid) at full speed: compile the
-  schematic to native code rather than interpreting it in Tcl.
-- **Engine (optional)** — AC/frequency analysis would turn Schem into a
-  full electrical *simulator* as well as a computation language; fill-reducing
-  ordering in the sparse solver for very large nonlinear boards.
+- **Code-gen layers** — extend the emitters past linear DC: Newton (diodes),
+  the fixed-point relay loop (the IR already carries pickup/dropout/delay),
+  and transient stepping (companion models).  Then compile + run the emitted
+  Zig to run very large grids at native speed (the path past the Tcl ceiling).
+- **More targets** — C / WASM / HDL backends, each a sibling proc over the
+  same IR; a compiled, fill-reduced elimination schedule baked into the IR.
+- **Engine (optional)** — AC/frequency analysis would make Schem a full
+  electrical *simulator* as well as a computation language.

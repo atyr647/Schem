@@ -15,7 +15,8 @@ current flow, exactly as it does on a real workbench.
   file in [`docs/FORMAT.md`](docs/FORMAT.md), the interactive editor +
   validator in [`docs/EDITOR.md`](docs/EDITOR.md), the relay logic
   library (the universality proof) in [`docs/LOGIC.md`](docs/LOGIC.md), and
-  the standard panel circuits in [`docs/STANDARD.md`](docs/STANDARD.md).
+  the standard panel circuits in [`docs/STANDARD.md`](docs/STANDARD.md),
+  and the Circuit IR + backends in [`docs/IR.md`](docs/IR.md).
 - **The interpreter** is a Tcl circuit engine in [`src/`](src/) that
   reads a schematic and solves it with real circuit theory:
   continuity (closed loops), Ohm's law, Kirchhoff's current & voltage
@@ -141,7 +142,7 @@ checks each fundamental rule against a hand-computed value:
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 | **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
-Run them (104 tests total):
+Run them (113 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 44: the electrical laws + device realism
@@ -151,6 +152,7 @@ $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 $ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
 $ tclsh tests/test_catalog.tcl   #  9: register, adder, counter, decoder, selector, accumulator, sequencer, computer
+$ tclsh tests/test_cir.tcl       #  9: circuit IR lowering + Zig/dcref backends
 ```
 
 ## Examples
@@ -186,6 +188,8 @@ src/transient.tcl     time-domain analysis (capacitors / inductors)
 src/hierarchy.tcl     Component → Circuit → Panel → Grid
 src/format.tcl        binary .schem save / load
 src/netlist.tcl       derived netlist / IR (build cache)
+src/compile.tcl       the Circuit IR (lowered, backend-agnostic compile target)
+src/backend.tcl       interchangeable backends over the IR (zig, dcref)
 src/render.tcl        the viewer (draws the schematic as a wired diagram)
 src/validate.tcl      anti-spaghetti + electrical validation
 src/editor.tcl        the interactive workbench (EditorSession)

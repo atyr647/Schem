@@ -22,13 +22,15 @@ source [file join $bindir .. src schem.tcl]
 catch {fconfigure stdout -encoding utf-8}   ;# box-drawing views need UTF-8
 
 proc usage {} {
-    puts stderr "usage: schem <run|save|open|edit|validate|netlist> ARGS | -i | -v"
+    puts stderr "usage: schem <run|save|open|edit|validate|netlist|ir|emit> ARGS | -i | -v"
     puts stderr "       schem run     BUILDER.tcl"
     puts stderr "       schem save    BUILDER.tcl OUT.schem"
     puts stderr "       schem open    FILE.schem"
     puts stderr "       schem edit    \[FILE.schem\]"
     puts stderr "       schem validate FILE.schem"
     puts stderr "       schem netlist FILE.schem"
+    puts stderr "       schem ir      FILE.schem            (the Circuit IR)"
+    puts stderr "       schem emit    TARGET FILE.schem     (TARGET: zig, ...)"
     exit 2
 }
 
@@ -124,6 +126,20 @@ switch -- $cmd {
         if {[llength $rest] != 1} { usage }
         set s [schem::load [lindex $rest 0]]
         puts [$s netlistText]
+        exit 0
+    }
+
+    ir {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s cirText]
+        exit 0
+    }
+
+    emit {
+        if {[llength $rest] != 2} { usage }
+        set s [schem::load [lindex $rest 1]]
+        puts [schem::emit $s [lindex $rest 0]]
         exit 0
     }
 
