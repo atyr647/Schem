@@ -522,4 +522,44 @@ test diode-zener {reverse breakdown clamps the voltage near bv} -setup {
     expr {$vz > 5.0 && $vz < 6.5}
 } -cleanup {$s destroy} -result 1
 
+# ---- inductive relay coil: operate delay from L/R, and kickback ----------
+
+test coil-ramp {an inductive coil's current ramps, so pick-up is delayed} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 12 ; $s add ground GND ; $s wire B.neg GND.t
+    $s add switch SW -state closed
+    # coil 100 ohm, L = 0.5 H -> tau = L/R = 5 ms; pick-up 0.08 A.
+    $s add relay K -coil 100 -coilL 0.5 -pickup 0.08 -dropout 0.04
+    $s wire B.pos SW.a ; $s wire SW.b K.c1 ; $s wire K.c2 GND.t
+} -body {
+    set d [$s run -duration 0.03 -dt 5e-4 -record K]
+    set cur [dict get $d K]
+    # Current rises monotonically toward 12/100 = 0.12 A; early it is well
+    # below pick-up, late it is above.
+    list [expr {[lindex $cur 2] < 0.08}] [expr {[lindex $cur end] > 0.10}]
+} -cleanup {$s destroy} -result {1 1}
+
+test coil-kickback {interrupting an inductive coil spikes; a flyback diode clamps it} -setup {
+    proc ::mkcoil {flyback} {
+        set s [schem::new t]
+        $s add battery B -emf 12 ; $s add ground GND ; $s wire B.neg GND.t
+        $s add switch SW -state closed
+        $s add relay K -coil 100 -coilL 0.5 -pickup 0.08 -dropout 0.04
+        $s wire B.pos SW.a ; $s wire SW.b K.c1 ; $s wire K.c2 GND.t
+        if {$flyback} { $s add diode FW ; $s wire K.c1 FW.k ; $s wire FW.a K.c2 }
+        return $s
+    }
+} -body {
+    set peak {{s} {
+        set d [$s run -duration 0.02 -dt 5e-4 -record K.c1 -events {0.010 {open SW}}]
+        set p 0.0 ; foreach v [dict get $d K.c1] { if {abs($v) > abs($p)} { set p $v } }
+        return $p
+    }}
+    set bare  [mkcoil 0] ; set pbare  [apply $peak $bare]  ; $bare destroy
+    set clamp [mkcoil 1] ; set pclamp [apply $peak $clamp] ; $clamp destroy
+    # The bare coil spikes far past the 12 V supply; the flyback diode holds
+    # the node near the rail.
+    list [expr {abs($pbare) > 50.0}] [expr {abs($pclamp) < 15.0}]
+} -cleanup {rename ::mkcoil {}} -result {1 1}
+
 cleanupTests

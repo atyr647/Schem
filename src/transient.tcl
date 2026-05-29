@@ -66,6 +66,11 @@ oo::define ::schem::Schematic {
 
         set energized [dict create]
         set pend      [dict create]   ;# per-relay pending contact transitions
+        set coilI     [dict create]   ;# per-relay coil current (inductive coils)
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] eq "relay" && \
+                [dict get $comp params coilL] > 0} { dict set coilI $name 0.0 }
+        }
         set diodeV    [dict create]
         set out [dict create t {}]
         foreach sig $record { dict set out $sig {} }
@@ -84,9 +89,21 @@ oo::define ::schem::Schematic {
             # Build companion models for this step from the stored state.
             set state [dict create diodeV $diodeV]
             set capState [dict create] ; set indState [dict create]
+            set coilState [dict create]
             dict for {name comp} $Comp {
                 set pr [dict get $comp params]
                 switch [dict get $comp type] {
+                    relay {
+                        # An inductive coil (coilL>0) is an R+L companion, so
+                        # its current ramps with the coil*coilL time constant.
+                        set cL [expr {double([dict get $pr coilL])}]
+                        if {$cL > 0} {
+                            set rc [expr {double([dict get $pr coil])}]
+                            set cgeq [expr {$dt/($rc*$dt + $cL)}]
+                            set cieq [expr {$cgeq*($cL/$dt)*[dict get $coilI $name]}]
+                            dict set coilState $name [list $cgeq $cieq]
+                        }
+                    }
                     capacitor {
                         # Backward-Euler companion for a capacitor with series
                         # ESR: the branch is ESR in series with C, so its
@@ -110,6 +127,7 @@ oo::define ::schem::Schematic {
             }
             dict set state capState $capState
             dict set state indState $indState
+            dict set state coilState $coilState
 
             # Solve this instant, holding relay/fuse/breaker state fixed
             # (their state was decided by the *previous* step -> dt lag).
@@ -144,6 +162,16 @@ oo::define ::schem::Schematic {
                         dict set imap $name $inew
                         dict set indI $name $inew
                     }
+                    relay {
+                        if {[dict exists $coilState $name]} {
+                            lassign [dict get $coilState $name] cgeq cieq
+                            set vc [expr {[my NodeVoltageFromX $x $name.c1] - \
+                                          [my NodeVoltageFromX $x $name.c2]}]
+                            set inew [expr {$cgeq*$vc + $cieq}]
+                            dict set coilI $name $inew
+                            dict set imap $name $inew
+                        }
+                    }
                 }
             }
             dict set Result imap $imap
@@ -160,8 +188,9 @@ oo::define ::schem::Schematic {
             }
 
             # Decide relay/fuse/breaker state for the *next* step, honouring
-            # each relay's propagation delay (operate / release time).
-            my UpdateDevices $branches energized pend $tnow
+            # each relay's propagation delay (operate / release time) and the
+            # actual (ramping) current of any inductive coil.
+            my UpdateDevices $branches energized pend $tnow $coilI
         }
         dict set Result faults $Faults
         return $out

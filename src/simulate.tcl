@@ -208,7 +208,16 @@ oo::define ::schem::Schematic {
                 relay {
                     set rc [expr {double([dict get $pr coil])}]
                     if {$rc <= 0} { set rc 1e-9 }
-                    apply $stampG [my NodeOf $name.c1] [my NodeOf $name.c2] [expr {1.0/$rc}]
+                    # The coil is a resistance at DC; in transient, if it has
+                    # inductance (coilL), it is an R+L companion so its current
+                    # ramps and interrupting it produces back-EMF (kickback).
+                    if {[dict exists $state coilState $name]} {
+                        lassign [dict get $state coilState $name] cgeq cieq
+                        apply $stampG [my NodeOf $name.c1] [my NodeOf $name.c2] $cgeq
+                        apply $stampI [my NodeOf $name.c1] [my NodeOf $name.c2] $cieq
+                    } else {
+                        apply $stampG [my NodeOf $name.c1] [my NodeOf $name.c2] [expr {1.0/$rc}]
+                    }
                     # contacts: com-no closed when energised, com-nc when not.
                     set gc [expr {1.0/$::schem::RSMALL}]
                     if {[my RelayEnergized $name]} {
@@ -468,7 +477,7 @@ oo::define ::schem::Schematic {
     # relay's operate/release time.  Pass `pendVar` (a dict tracking pending
     # transitions) and the current time `tnow` to enable it; without them
     # (DC solve) relays switch immediately, as before.
-    method UpdateDevices {branches energizedVar {pendVar {}} {tnow 0}} {
+    method UpdateDevices {branches energizedVar {pendVar {}} {tnow 0} {coilI {}}} {
         upvar 1 $energizedVar energized
         if {$pendVar ne ""} { upvar 1 $pendVar pend }
         set changed 0
@@ -482,7 +491,10 @@ oo::define ::schem::Schematic {
                 relay {
                     set vc [expr {abs([dict get $vmap $name.c1] - [dict get $vmap $name.c2])}]
                     set rc [expr {double([dict get $pr coil])}]
-                    set ic [expr {$rc > 0 ? $vc/$rc : 0.0}]
+                    # Use the actual (possibly ramping) coil current when the
+                    # coil is inductive; otherwise Ohm's law on the coil.
+                    set ic [expr {[dict exists $coilI $name] ? abs([dict get $coilI $name]) \
+                                  : ($rc > 0 ? $vc/$rc : 0.0)}]
                     set pickup [expr {double([dict get $pr pickup])}]
                     # Hysteresis: a real relay needs the full pick-up current to
                     # close, but holds in until the coil falls to the lower
