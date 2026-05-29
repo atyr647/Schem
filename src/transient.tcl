@@ -72,6 +72,7 @@ oo::define ::schem::Schematic {
                 [dict get $comp params coilL] > 0} { dict set coilI $name 0.0 }
         }
         set diodeV    [dict create]
+        set heat      [dict create]   ;# fuse/breaker accumulated I^2t
         set out [dict create t {}]
         foreach sig $record { dict set out $sig {} }
 
@@ -187,10 +188,14 @@ oo::define ::schem::Schematic {
                 }
             }
 
+            # Inverse time-current tripping for fuses/breakers (I^2t curve).
+            my TripThermal heat $dt
+
             # Decide relay/fuse/breaker state for the *next* step, honouring
             # each relay's propagation delay (operate / release time) and the
-            # actual (ramping) current of any inductive coil.
-            my UpdateDevices $branches energized pend $tnow $coilI
+            # actual (ramping) current of any inductive coil.  Devices with an
+            # i2t curve are handled by TripThermal above, not instantly here.
+            my UpdateDevices $branches energized pend $tnow $coilI 1
         }
         dict set Result faults $Faults
         return $out

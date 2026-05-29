@@ -534,6 +534,37 @@ test diode-zener {reverse breakdown clamps the voltage near bv} -setup {
     expr {$vz > 5.0 && $vz < 6.5}
 } -cleanup {$s destroy} -result 1
 
+# ---- fuse inverse time-current (I^2t) ------------------------------------
+
+test fuse-inverse-time {a bigger overload blows the fuse sooner} -setup {
+    proc ::blowtime {overR} {
+        set s [schem::new t]
+        $s add battery B -emf 12 ; $s add ground GND ; $s wire B.neg GND.t
+        $s add fuse F -rating 1.0 -i2t 0.05 ; $s add resistor R -r $overR
+        $s wire B.pos F.a ; $s wire F.b R.a ; $s wire R.b GND.t
+        set d [$s run -duration 1.0 -dt 5e-3 -record F]
+        set tb 1.0
+        foreach t [dict get $d t] i [dict get $d F] {
+            if {$i < 0.01} { set tb $t ; break }
+        }
+        $s destroy
+        return $tb
+    }
+} -body {
+    # 2 A (2x rating) must take longer to blow than 4 A (4x rating).
+    expr {[blowtime 6] > [blowtime 3]}
+} -cleanup {rename ::blowtime {}} -result 1
+
+test fuse-i2t-dc {a steady DC overcurrent still blows an i2t fuse} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 12 ; $s add ground GND ; $s wire B.neg GND.t
+    $s add fuse F -rating 1.0 -i2t 0.05 ; $s add resistor R -r 3
+    $s wire B.pos F.a ; $s wire F.b R.a ; $s wire R.b GND.t
+    $s solve
+} -body {
+    $s get F state
+} -cleanup {$s destroy} -result blown
+
 # ---- inductive relay coil: operate delay from L/R, and kickback ----------
 
 test coil-ramp {an inductive coil's current ramps, so pick-up is delayed} -setup {

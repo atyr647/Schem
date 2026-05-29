@@ -484,7 +484,7 @@ oo::define ::schem::Schematic {
     # relay's operate/release time.  Pass `pendVar` (a dict tracking pending
     # transitions) and the current time `tnow` to enable it; without them
     # (DC solve) relays switch immediately, as before.
-    method UpdateDevices {branches energizedVar {pendVar {}} {tnow 0} {coilI {}}} {
+    method UpdateDevices {branches energizedVar {pendVar {}} {tnow 0} {coilI {}} {transient 0}} {
         upvar 1 $energizedVar energized
         if {$pendVar ne ""} { upvar 1 $pendVar pend }
         set changed 0
@@ -537,7 +537,12 @@ oo::define ::schem::Schematic {
                     }
                 }
                 fuse {
-                    if {[dict get $pr state] eq "intact" && [dict exists $imap $name]} {
+                    # With an I^2t rating the transient analyser trips this on
+                    # an inverse-time curve (see TripThermal); here we trip only
+                    # the instantaneous case (DC steady state, or no i2t curve).
+                    set i2t [expr {[dict exists $pr i2t] ? double([dict get $pr i2t]) : 0.0}]
+                    if {[dict get $pr state] eq "intact" && [dict exists $imap $name] \
+                        && !($transient && $i2t > 0)} {
                         set i [expr {abs([dict get $imap $name])}]
                         if {$i > [dict get $pr rating]} {
                             my set $name state blown
@@ -549,7 +554,9 @@ oo::define ::schem::Schematic {
                     }
                 }
                 breaker {
-                    if {[dict get $pr state] eq "closed" && [dict exists $imap $name]} {
+                    set i2t [expr {[dict exists $pr i2t] ? double([dict get $pr i2t]) : 0.0}]
+                    if {[dict get $pr state] eq "closed" && [dict exists $imap $name] \
+                        && !($transient && $i2t > 0)} {
                         set i [expr {abs([dict get $imap $name])}]
                         if {$i > [dict get $pr rating]} {
                             my set $name state tripped
@@ -564,6 +571,48 @@ oo::define ::schem::Schematic {
         }
         dict set Result energized $energized
         return $changed
+    }
+
+    # TripThermal -- inverse time-current tripping for fuses and breakers in
+    # transient analysis.  A device over its rating heats up at a rate of
+    # (I^2 - rating^2); when the accumulated I^2t exceeds the device's i2t
+    # rating it blows/trips -- so a small overload trips slowly and a large
+    # one fast, like a real time-current curve.  Below rating it cools.
+    # heatVar names a dict of accumulated heat (A^2 s) per device.
+    method TripThermal {heatVar dt} {
+        upvar 1 $heatVar heat
+        dict for {name comp} $Comp {
+            set type [dict get $comp type]
+            if {$type ni {fuse breaker}} continue
+            set pr [dict get $comp params]
+            set i2t [expr {double([dict get $pr i2t])}]
+            if {$i2t <= 0} continue
+            set okstate [expr {$type eq "fuse" ? "intact" : "closed"}]
+            if {[dict get $pr state] ne $okstate} continue
+            set rating [expr {double([dict get $pr rating])}]
+            set i [expr {abs([my current $name])}]
+            set h [expr {[dict exists $heat $name] ? [dict get $heat $name] : 0.0}]
+            if {$i > $rating} {
+                set h [expr {$h + ($i*$i - $rating*$rating)*$dt}]
+            } else {
+                set h [expr {max(0.0, $h - $rating*$rating*$dt)}]
+            }
+            if {$h >= $i2t} {
+                if {$type eq "fuse"} {
+                    my set $name state blown
+                    lappend Faults [dict create kind fuse-blown component $name \
+                        current $i rating $rating \
+                        detail "fuse $name blew on I^2t at [format %.3g $i] A (rating $rating A) -- irreversible"]
+                } else {
+                    my set $name state tripped
+                    lappend Faults [dict create kind breaker-tripped component $name \
+                        current $i rating $rating \
+                        detail "breaker $name tripped on inverse-time at [format %.3g $i] A (rating $rating A) -- resettable"]
+                }
+                set h 0.0
+            }
+            dict set heat $name $h
+        }
     }
 
     # CheckOverload -- flag gauged wires carrying more than their ampacity.
