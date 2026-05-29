@@ -192,4 +192,31 @@ test computing-panel {a controlled accumulator multiplies then halts} -body {
     set seq            ;# 0, then 2,4,6, then frozen at 6 (2 x 3, halted)
 } -result {0 2 4 6 6}
 
+# ---- grid: panels composed at the top of the hierarchy -------------------
+
+test computing-grid {a grid holds independent panels, addressed by full path} -body {
+    proc cpanel {name} {
+        set pan [schem::panel $name]
+        set c [$pan instantiate [schem::lib::counter CT 2] C]
+        foreach p {VCC GND CLK Q0 Q1} { $pan expose $p [dict get $c $p] }
+        return $pan
+    }
+    set grid [schem::grid plant]
+    $grid add battery VCC -emf 12 ; $grid add ground GND ; $grid wire VCC.neg GND.t
+    set A [$grid instantiate [cpanel A] A] ; set B [$grid instantiate [cpanel B] B]
+    foreach m [list $A $B] { $grid wire [dict get $m VCC] VCC.pos ; $grid wire [dict get $m GND] GND.t }
+    $grid add switch CKA ; $grid wire VCC.pos CKA.a ; $grid wire CKA.b [dict get $A CLK]
+    $grid add switch CKB ; $grid wire VCC.pos CKB.a ; $grid wire CKB.b [dict get $B CLK]
+    proc rd {grid m} { set v 0 ; foreach b {0 1} { if {[$grid probe [dict get $m Q$b]] > 6} { set v [expr {$v|(1<<$b)}] } } ; return $v }
+    proc tk {grid sw} { $grid open $sw ; $grid solve ; $grid close $sw ; $grid solve }
+    $grid open CKA ; $grid open CKB ; $grid solve
+    tk $grid CKA ; tk $grid CKA ; tk $grid CKB    ;# A twice, B once
+    # A=2, B=1, and a component is addressable by its grid/panel/circuit path
+    set deep [expr {"A/C/T0/FF/M/M/KC" in [$grid components] || \
+                    [llength [lsearch -all -glob [$grid components] A/C/*]] > 0}]
+    set res [list [rd $grid $A] [rd $grid $B] $deep]
+    $grid destroy
+    set res
+} -result {2 1 1}
+
 cleanupTests

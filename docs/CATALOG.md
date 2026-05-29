@@ -25,6 +25,8 @@ outputs are levels — so assemblies chain directly, no glue.
 | `counter n` | `CLK · Q0..Qn-1` | an `n`-bit binary ripple counter (Q0 = LSB) |
 | `decoder n` | `A0..An-1 · Y0..Y(2ⁿ-1)` | drives exactly one output HIGH, selected by the binary address (A0 most significant); a tree of SPDT contacts |
 | `selector n` | `I0..I(2ⁿ-1) A0..An-1 · OUT` | a multiplexer: `OUT` follows the addressed input |
+| `accumulator n` | `IN0..INn-1 CLK · Q0..Qn-1` | a register fed back through an adder: `Q := Q + IN` each clock (stateful arithmetic) |
+| `sequencer n` | `CLK · P0..P(2ⁿ-1)` | a counter + decoder: one control line active per step, advancing each clock (a control unit) |
 
 The `decoder` and `selector` share one builder, `Tree`, which wires a binary
 tree of single-pole double-throw relay contacts — each relay's NC throw is
@@ -34,13 +36,19 @@ address bits route VCC (decoder) or a data line (selector) to exactly one of
 
 ## Composing upward
 
-These are the building blocks for the next milestones, all still pure
-circuits:
+These assemblies build the proven machines, all still pure circuits:
 
-- **Accumulator** = `register` + `adder` + a clock — adds an input into a
-  running total on each tick (`examples/accumulator.tcl`).
-- **Instruction sequencer** = `counter` + `decoder` → control lines — steps
-  through phases and activates one control line per step.
+- **Accumulator** (`accumulator`, `examples/accumulator.tcl`) = `register` +
+  `adder` + a clock — adds an input into a running total each tick.
+- **Instruction sequencer** (`sequencer`, `examples/sequencer.tcl`) =
+  `counter` + `decoder` — steps through control phases, one line per step.
+- **Computing panel** (`examples/computer.tcl`) = accumulator (datapath) +
+  step counter and a seal-in HALT latch (control) + an operand (program): a
+  controlled multiplier that computes `operand × n` by repeated addition and
+  then halts. ~414 components, 132 relays — a real relay machine.
+- **Computing grid** (`examples/grid.tcl`) = panels composed into a grid, the
+  top of **Component → Circuit → Panel → Grid**: each component is addressed
+  by its full path (`grid / panel / circuit / … / component`).
 
 A register made of D flip-flops made of latches made of relays; an adder made
 of full adders made of gates made of relays — the hierarchy doing its job.

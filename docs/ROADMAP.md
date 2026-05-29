@@ -69,21 +69,23 @@ interpreter · (future) WASM · C · HDL · ...
 | Clocked sequential logic — gated D latch, rising-edge (master/slave) D flip-flop, toggle flip-flop and a 2-bit ripple counter; clocked in DC via persistent state and free-running in the transient analyser | ✅ | `lib/logic.tcl` |
 | Standard panel circuits — on/off-delay timers, one-shot, debounce, flasher, latching relay bank, safety interlock, plus a timed bench stimulus (`run -events`) | ✅ | `lib/standard.tcl`, `src/transient.tcl` |
 | Engine: device realism — battery internal resistance; relay hysteresis, propagation delay and an inductive coil (current ramp + kickback); wire resistance from AWG×length; capacitor ESR/leakage; inductor winding resistance; diode series resistance and reverse breakdown (Zener); fuse/breaker inverse time-current (I²t); a coupled-winding transformer; power & energy measurement | ✅ | `src/simulate.tcl`, `src/transient.tcl` |
+| Sparse network solver — stamps and factorises only the non-zero matrix entries (no dense `n²`/`n³`), so large panels/grids stay tractable; same MNA, same results | ✅ | `src/solver.tcl`, `src/simulate.tcl` |
+| Circuit catalog — reusable assemblies: register, n-bit adder, counter, decoder, selector (mux) | ✅ | `lib/catalog.tcl` |
+| Proven machines — an accumulator (stateful arithmetic), an instruction sequencer (one-hot control phases), a complete computing panel (a controlled multiplier that halts), and a grid of panels (the full Component→Circuit→Panel→Grid hierarchy) | ✅ | `lib/catalog.tcl`, `examples/` |
 
 ## Next
 
-The language is electrically and computationally complete: every part and
-named standard circuit in the definition exists, and the engine obeys the
-fundamental laws with realistic devices.  What remains is *targets*, not
-language:
+The language is electrically and computationally complete, the engine has
+real device physics, the solver scales to large assemblies, and a programmable
+machine has been built and run.  What remains is *targets*, not language:
 
 - **Circuit IR** — a lowered, analysis-agnostic compile target (every
   element classified by electrical role with its derived quantities and
   control semantics) that backends consume.  The single foundation for:
 - **Backends** — emit the Circuit IR to other targets (C / WASM / HDL), all
-  from the same schematic source.
+  from the same schematic source.  This is also the path to running very
+  large machines (a complete computing grid) at full speed: compile the
+  schematic to native code rather than interpreting it in Tcl.
 - **Engine (optional)** — AC/frequency analysis would turn Schem into a
-  full electrical *simulator* as well as a computation language; convergence
-  aids for very large nonlinear boards.  (All the DC/transient device
-  physics is now in place — sources, reactives, semiconductors, protection,
-  magnetics, with their real parasitics.)
+  full electrical *simulator* as well as a computation language; fill-reducing
+  ordering in the sparse solver for very large nonlinear boards.
