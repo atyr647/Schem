@@ -584,10 +584,66 @@ oo::define ::schem::Schematic {
                     # closed contact modelled as RSMALL -> I = Vdrop / RSMALL.
                     set i [expr {[my voltage $name.a $name.b] / $::schem::RSMALL}]
                 }
+                diode {
+                    # Shockley current at the solved junction voltage (with any
+                    # reverse-breakdown contribution); positive a -> k forward.
+                    set i [my DiodeCurrent $name [my voltage $name.a $name.k]]
+                }
                 default { return 0.0 }
             }
         }
         return [expr {$signed ? $i : abs($i)}]
+    }
+
+    # DiodeCurrent -- the diode current (anode->cathode) at junction voltage vd,
+    # from the Shockley model plus optional Zener/avalanche reverse breakdown.
+    method DiodeCurrent {name vd} {
+        set pr [dict get $Comp $name params]
+        set Is [expr {double([dict get $pr is])}]
+        set nf [expr {double([dict get $pr n])}]
+        set Vt [expr {0.025852 * $nf}]
+        set id [expr {$Is * (exp(min($vd/$Vt, 80.0)) - 1.0)}]
+        # Reverse breakdown: below -bv the diode conducts hard in reverse.
+        set bv [expr {[dict exists $pr bv] ? double([dict get $pr bv]) : 0.0}]
+        if {$bv > 0 && $vd < -$bv} {
+            set id [expr {$id - $Is * (exp(min((-($vd)-$bv)/$Vt, 80.0)) - 1.0)}]
+        }
+        return $id
+    }
+
+    # power -- instantaneous power at a component (watts).  Sign convention:
+    # positive = absorbing/dissipating, negative = delivering (a source).
+    # P = V(first->second) * I(first->second).
+    method power {name} {
+        if {![dict exists $Result vmap]} { my solve }
+        switch [dict get $Comp $name type] {
+            battery { set pins {pos neg} }
+            relay   { set pins {c1 c2} }
+            diode   { set pins {a k} }
+            resistor - capacitor - inductor - switch - button -
+            fuse - breaker - ammeter { set pins {a b} }
+            default { return 0.0 }
+        }
+        lassign $pins p q
+        return [expr {[my voltage $name.$p $name.$q] * [my current $name -signed]}]
+    }
+
+    # energy -- energy stored in a reactive component (joules):
+    # a capacitor holds 1/2 C V^2, an inductor holds 1/2 L I^2.
+    method energy {name} {
+        if {![dict exists $Result vmap]} { my solve }
+        set pr [dict get $Comp $name params]
+        switch [dict get $Comp $name type] {
+            capacitor {
+                set v [my voltage $name.a $name.b]
+                return [expr {0.5 * double([dict get $pr c]) * $v * $v}]
+            }
+            inductor {
+                set i [my current $name -signed]
+                return [expr {0.5 * double([dict get $pr l]) * $i * $i}]
+            }
+            default { return 0.0 }
+        }
     }
 
     # continuity -- is there a conductive path between two terminals
