@@ -56,14 +56,15 @@ namespace eval ::schem {
         battery   {terminals {pos neg}     params {emf 9.0 esr 0.0}}
         ground    {terminals {t}           params {}}
         resistor  {terminals {a b}         params {r 1000.0}}
-        capacitor {terminals {a b}         params {c 1e-6 v0 0.0}}
-        inductor  {terminals {a b}         params {l 1e-3 i0 0.0}}
+        capacitor {terminals {a b}         params {c 1e-6 v0 0.0 esr 0.0 rleak 0.0}}
+        inductor  {terminals {a b}         params {l 1e-3 i0 0.0 r 0.0}}
         switch    {terminals {a b}         params {state open}}
         button    {terminals {a b}         params {state released}}
-        relay     {terminals {c1 c2 com no nc} params {coil 100.0 pickup 0.01 dropout 0.005 delay 0.0}}
-        breaker   {terminals {a b}         params {rating 10.0 state closed}}
-        fuse      {terminals {a b}         params {rating 1.0 state intact}}
-        diode     {terminals {a k}         params {is 1e-14 n 1.0}}
+        relay     {terminals {c1 c2 com no nc} params {coil 100.0 coilL 0.0 pickup 0.01 dropout 0.005 delay 0.0}}
+        breaker   {terminals {a b}         params {rating 10.0 state closed i2t 0.0}}
+        fuse      {terminals {a b}         params {rating 1.0 state intact i2t 0.0}}
+        diode     {terminals {a k}         params {is 1e-14 n 1.0 rs 0.0 bv 0.0}}
+        transformer {terminals {p1 n1 p2 n2} params {l1 1.0 l2 1.0 k 0.99}}
         bus       {terminals {t}           params {}}
         junction  {terminals {t}           params {}}
         ammeter   {terminals {a b}         params {}}

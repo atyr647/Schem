@@ -451,4 +451,75 @@ test short-vs-load {a legitimate low-resistance load is not flagged as a short} 
          [expr {"short" in [lmap f [$s faults] {dict get $f kind}]}]
 } -cleanup {$s destroy} -result {1 0}
 
+# ---- power and energy ----------------------------------------------------
+
+test power-balance {dissipated power equals delivered power (I^2R)} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 9 ; $s add ground GND ; $s add resistor R -r 1000
+    $s wire B.pos R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+    $s solve
+} -body {
+    # R dissipates I^2 R = +81 mW; the source delivers the same (negative).
+    list [approx [$s power R] 0.081 1e-4] \
+         [approx [$s power B] -0.081 1e-4] \
+         [approx [$s power R] [expr {-[$s power B]}] 1e-9]
+} -cleanup {$s destroy} -result {ok ok ok}
+
+test energy-capacitor {a charged capacitor stores 1/2 C V^2} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 10 ; $s add ground GND ; $s wire B.neg GND.t
+    $s add resistor R -r 100 ; $s add capacitor C -c 1e-3
+    $s wire B.pos R.a ; $s wire R.b C.a ; $s wire C.b GND.t
+    $s run -duration 2.0 -dt 0.01
+} -body {
+    # Charged to ~10 V: E = 0.5 * 1e-3 * 100 = 0.05 J.
+    approx [$s energy C] 0.05 1e-3
+} -cleanup {$s destroy} -result ok
+
+# ---- device parasitics ---------------------------------------------------
+
+test inductor-winding-r {at DC an inductor is its winding resistance} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 10 ; $s add ground GND ; $s add inductor L -l 1e-3 -r 5
+    $s wire B.pos L.a ; $s wire L.b GND.t ; $s wire B.neg GND.t
+    $s solve
+} -body {
+    approx [$s current L] 2.0 1e-6
+} -cleanup {$s destroy} -result ok
+
+test capacitor-leakage {a charged capacitor self-discharges through rleak} -setup {
+    set s [schem::new t]
+    $s add ground GND ; $s add capacitor C -c 1e-3 -v0 10 -rleak 1000
+    $s wire C.b GND.t
+    set d [$s run -duration 3.0 -dt 0.05 -record C.a]
+} -body {
+    # RC = rleak*C = 1 s; after 3 s -> 10*e^-3 ~ 0.5 V (well below the start).
+    expr {[lindex [dict get $d C.a] end] < 1.0}
+} -cleanup {$s destroy} -result 1
+
+test diode-series-r {series resistance limits current and raises the drop} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 5 ; $s add ground GND ; $s wire B.neg GND.t
+    $s add diode D -rs 10 ; $s add resistor R -r 1
+    $s wire B.pos D.a ; $s wire D.k R.a ; $s wire R.b GND.t
+    $s solve
+} -body {
+    # I ~ (5 - 0.7)/(1 + 10) ~ 0.39 A; the terminal drop is ~0.7 + I*10.
+    list [expr {abs([$s current D] - 0.39) < 0.05}] \
+         [expr {[$s voltage D.a D.k] > 4.0}]
+} -cleanup {$s destroy} -result {1 1}
+
+test diode-zener {reverse breakdown clamps the voltage near bv} -setup {
+    set s [schem::new t]
+    $s add battery B -emf 12 ; $s add ground GND ; $s wire B.neg GND.t
+    $s add resistor R -r 1000 ; $s add diode Z -bv 5.1
+    $s wire B.pos R.a ; $s wire R.b Z.k ; $s wire Z.a GND.t
+    $s solve
+} -body {
+    # Reverse-biased Zener clamps in the breakdown knee just above bv,
+    # far below the 12 V it would reach without breakdown.
+    set vz [$s voltage Z.k Z.a]
+    expr {$vz > 5.0 && $vz < 6.5}
+} -cleanup {$s destroy} -result 1
+
 cleanupTests

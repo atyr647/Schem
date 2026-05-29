@@ -88,14 +88,23 @@ oo::define ::schem::Schematic {
                 set pr [dict get $comp params]
                 switch [dict get $comp type] {
                     capacitor {
+                        # Backward-Euler companion for a capacitor with series
+                        # ESR: the branch is ESR in series with C, so its
+                        # conductance is 1/(esr + dt/C).  capV holds the
+                        # internal capacitor voltage.
                         set C [expr {double([dict get $pr c])}]
-                        set geq [expr {$C/$dt}]
+                        set esr [expr {double([dict get $pr esr])}]
+                        set geq [expr {1.0/($esr + $dt/$C)}]
                         dict set capState $name [list $geq [expr {-$geq*[dict get $capV $name]}]]
                     }
                     inductor {
+                        # Companion for an inductor with series winding
+                        # resistance r: conductance dt/(r*dt + L).
                         set L [expr {double([dict get $pr l])}]
-                        set geq [expr {$dt/$L}]
-                        dict set indState $name [list $geq [dict get $indI $name]]
+                        set rL [expr {double([dict get $pr r])}]
+                        set geq [expr {$dt/($rL*$dt + $L)}]
+                        set ieq [expr {$geq*($L/$dt)*[dict get $indI $name]}]
+                        dict set indState $name [list $geq $ieq]
                     }
                 }
             }
@@ -121,21 +130,24 @@ oo::define ::schem::Schematic {
                         lassign [dict get $capState $name] cgeq cieq
                         set vab [expr {[my NodeVoltageFromX $x $name.a] - \
                                        [my NodeVoltageFromX $x $name.b]}]
-                        set vprev [dict get $capV $name]
-                        dict set imap $name [expr {$cgeq*($vab-$vprev)}]
-                        dict set capV $name $vab
+                        # Branch current, then advance the internal cap voltage.
+                        set i [expr {$cgeq*$vab + $cieq}]
+                        set C [expr {double([dict get $comp params c])}]
+                        dict set imap $name $i
+                        dict set capV $name [expr {[dict get $capV $name] + ($dt/$C)*$i}]
                     }
                     inductor {
-                        lassign [dict get $indState $name] geq iprev
+                        lassign [dict get $indState $name] geq ieq
                         set vab [expr {[my NodeVoltageFromX $x $name.a] - \
                                        [my NodeVoltageFromX $x $name.b]}]
-                        set inew [expr {$geq*$vab + $iprev}]
+                        set inew [expr {$geq*$vab + $ieq}]
                         dict set imap $name $inew
                         dict set indI $name $inew
                     }
                 }
             }
             dict set Result imap $imap
+            my StoreDiodeCurrents $diodeV
 
             # Record requested signals.
             dict lappend out t $tnow

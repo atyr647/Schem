@@ -131,9 +131,12 @@ oo::define ::schem::Schematic {
                 }
                 inductor {
                     if {$mode eq "dc"} {
-                        # An inductor is a short circuit at DC steady state.
+                        # At DC steady state an inductor is its winding
+                        # resistance r (a short when r = 0): a branch carrying
+                        # the series resistance on its own row.
                         lappend br [dict create owner $name kind inductor \
-                            p [my NodeOf $name.a] q [my NodeOf $name.b] emf 0.0]
+                            p [my NodeOf $name.a] q [my NodeOf $name.b] emf 0.0 \
+                            rs [expr {double([dict get $pr r])}]]
                     }
                 }
             }
@@ -221,13 +224,17 @@ oo::define ::schem::Schematic {
                     }
                 }
                 capacitor {
+                    set na [my NodeOf $name.a] ; set nb [my NodeOf $name.b]
+                    # Leakage: a real capacitor self-discharges through a large
+                    # parallel resistance (rleak); present at DC and in transient.
+                    set rleak [expr {double([dict get $pr rleak])}]
+                    if {$rleak > 0} { apply $stampG $na $nb [expr {1.0/$rleak}] }
                     if {[dict exists $state capState $name]} {
                         lassign [dict get $state capState $name] geq ieq
-                        set na [my NodeOf $name.a] ; set nb [my NodeOf $name.b]
                         apply $stampG $na $nb $geq
                         apply $stampI $na $nb $ieq
                     }
-                    # (DC steady state: capacitor is an open circuit -> nothing)
+                    # (DC steady state: the capacitor itself is an open circuit.)
                 }
                 inductor {
                     if {[dict exists $state indState $name]} {
@@ -240,26 +247,24 @@ oo::define ::schem::Schematic {
             }
         }
 
-        # --- diodes (nonlinear, linearised at diodeV) ---
+        # --- diodes (nonlinear, linearised at the junction voltage diodeV) ---
         dict for {name comp} $Comp {
             if {[dict get $comp type] ne "diode"} continue
             set pr [dict get $comp params]
-            set Is [expr {double([dict get $pr is])}]
-            set nf [expr {double([dict get $pr n])}]
-            set Vt [expr {0.025852 * $nf}]
-            set vd [expr {[dict exists $state diodeV $name] ? \
+            set rs [expr {double([dict get $pr rs])}]
+            set vj [expr {[dict exists $state diodeV $name] ? \
                 [dict get $state diodeV $name] : 0.0}]
-            # Companion model: Id = Is(exp(vd/Vt)-1); Geq = dId/dvd.
-            set e [expr {exp($vd/$Vt)}]
-            set Id [expr {$Is*($e-1.0)}]
-            set Geq [expr {$Is*$e/$Vt}]
-            if {$Geq < 1e-12} { set Geq 1e-12 }
-            set Ieq [expr {$Id - $Geq*$vd}]
+            # Junction current Id and conductance gj (incl. reverse breakdown).
+            lassign [my DiodeGI $name $vj] Id gj
+            # Fold any series (bulk) resistance into the terminal conductance:
+            # G_t = gj/(1+gj*rs); linearise about the terminal voltage vd0.
+            set Gt  [expr {$gj/(1.0 + $gj*$rs)}]
+            set vd0 [expr {$vj + $Id*$rs}]
+            set Ieq [expr {$Id - $Gt*$vd0}]
             set na [my NodeOf $name.a] ; set nk [my NodeOf $name.k]
-            apply $stampG $na $nk $Geq
-            # Companion current source: constant part of the linearised
-            # diode current (anode->cathode), same sign convention as the
-            # capacitor/inductor companions above.
+            apply $stampG $na $nk $Gt
+            # Companion current source: constant part of the linearised diode
+            # current (anode->cathode), same sign as the R/C/L companions.
             apply $stampI $na $nk $Ieq
         }
 
@@ -310,13 +315,25 @@ oo::define ::schem::Schematic {
                 expr {$nid == 0 ? 0.0 : [lindex $x [expr {$nid-1}]]}
             }}
 
-            # Update diode junction voltages with damping (limit big swings).
+            # Update diode *junction* voltages with damping (limit big swings).
+            # With series resistance the junction sits behind the terminal
+            # voltage by the rs*I drop, so back it out: vj = vd - I*rs.
             set maxd 0.0
             dict for {name comp} $Comp {
                 if {[dict get $comp type] ne "diode"} continue
-                set vnew [expr {[apply $nodeV [my NodeOf $name.a]] - \
-                                [apply $nodeV [my NodeOf $name.k]]}]
+                set vd [expr {[apply $nodeV [my NodeOf $name.a]] - \
+                              [apply $nodeV [my NodeOf $name.k]]}]
                 set vold [expr {[dict exists $diodeV $name] ? [dict get $diodeV $name] : 0.0}]
+                set rs [expr {double([dict get $comp params rs])}]
+                if {$rs > 0} {
+                    lassign [my DiodeGI $name $vold] Id gj
+                    set Gt [expr {$gj/(1.0 + $gj*$rs)}]
+                    set Ieq [expr {$Id - $Gt*($vold + $Id*$rs)}]
+                    set Ibranch [expr {$Gt*$vd + $Ieq}]
+                    set vnew [expr {$vd - $Ibranch*$rs}]
+                } else {
+                    set vnew $vd
+                }
                 # Damp to keep exp() well-behaved.
                 if {$vnew - $vold > 0.5}  { set vnew [expr {$vold + 0.5}] }
                 if {$vold - $vnew > 0.5}  { set vnew [expr {$vold - 0.5}] }
@@ -375,10 +392,26 @@ oo::define ::schem::Schematic {
             dict set seen $key 1
         }
         set Energized $energized   ;# persist for the next solve
+        if {[dict exists $state diodeV]} { my StoreDiodeCurrents [dict get $state diodeV] }
         set Result [dict replace $Result faults $Faults]
         my CheckOverload
         my CheckShort
         return $Result
+    }
+
+    # StoreDiodeCurrents -- record each diode's branch current (the junction
+    # current at the converged junction voltage) into imap, so `current` and
+    # `power` read the true current rather than recomputing it from the
+    # terminal voltage (which is wrong when a diode has series resistance).
+    method StoreDiodeCurrents {diodeV} {
+        if {![dict exists $Result imap]} return
+        set imap [dict get $Result imap]
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] ne "diode"} continue
+            set vj [expr {[dict exists $diodeV $name] ? [dict get $diodeV $name] : 0.0}]
+            dict set imap $name [my DiodeCurrent $name $vj]
+        }
+        dict set Result imap $imap
     }
 
     # CheckShort -- a short is an unintended *near-ideal-conductor* path
@@ -595,20 +628,30 @@ oo::define ::schem::Schematic {
         return [expr {$signed ? $i : abs($i)}]
     }
 
-    # DiodeCurrent -- the diode current (anode->cathode) at junction voltage vd,
-    # from the Shockley model plus optional Zener/avalanche reverse breakdown.
-    method DiodeCurrent {name vd} {
+    # DiodeGI -- the diode junction current Id and small-signal conductance gj
+    # at junction voltage vj, from the Shockley model plus optional Zener/
+    # avalanche reverse breakdown (the diode conducts hard below -bv).
+    method DiodeGI {name vj} {
         set pr [dict get $Comp $name params]
         set Is [expr {double([dict get $pr is])}]
         set nf [expr {double([dict get $pr n])}]
         set Vt [expr {0.025852 * $nf}]
-        set id [expr {$Is * (exp(min($vd/$Vt, 80.0)) - 1.0)}]
-        # Reverse breakdown: below -bv the diode conducts hard in reverse.
-        set bv [expr {[dict exists $pr bv] ? double([dict get $pr bv]) : 0.0}]
-        if {$bv > 0 && $vd < -$bv} {
-            set id [expr {$id - $Is * (exp(min((-($vd)-$bv)/$Vt, 80.0)) - 1.0)}]
+        set ef [expr {exp(min($vj/$Vt, 80.0))}]
+        set Id [expr {$Is*($ef-1.0)}]
+        set gj [expr {$Is*$ef/$Vt}]
+        set bv [expr {double([dict get $pr bv])}]
+        if {$bv > 0 && $vj < -$bv} {
+            set eb [expr {exp(min((-$vj-$bv)/$Vt, 80.0))}]
+            set Id [expr {$Id - $Is*($eb-1.0)}]
+            set gj [expr {$gj + $Is*$eb/$Vt}]
         }
-        return $id
+        if {$gj < 1e-12} { set gj 1e-12 }
+        return [list $Id $gj]
+    }
+
+    # DiodeCurrent -- the diode current (anode->cathode) at junction voltage vj.
+    method DiodeCurrent {name vj} {
+        return [lindex [my DiodeGI $name $vj] 0]
     }
 
     # power -- instantaneous power at a component (watts).  Sign convention:
