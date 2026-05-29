@@ -141,19 +141,41 @@ proc ::schem::la::solve_sparse {Avar b n} {
     upvar 1 $Avar A
     if {$n == 0} { return {} }
 
-    # Two cross-linked views of the matrix:
-    #   row  i -> (dict col -> value)     -- a row's non-zero entries
-    #   col  j -> (dict row -> 1)         -- which rows have column j non-zero
-    # The column view lets each elimination step touch only the rows that
-    # actually couple to the pivot, instead of scanning all n rows.
-    set row [dict create] ; set col [dict create]
-    for {set i 0} {$i < $n} {incr i} { dict set row $i [dict create] }
+    # Build the matrix in its original indices first.
+    set orow [dict create]
+    for {set i 0} {$i < $n} {incr i} { dict set orow $i [dict create] }
     foreach key [array names A] {
         lassign [split $key ,] i j
-        dict set row $i $j [expr {double($A($key))}]
-        dict set col $j $i 1
+        dict set orow $i $j [expr {double($A($key))}]
     }
-    for {set i 0} {$i < $n} {incr i} { lset b $i [expr {double([lindex $b $i])}] }
+
+    # Fill-reducing order: eliminate low-degree variables first, so the
+    # high-degree power/ground rail nodes -- which would fill the matrix if
+    # eliminated early -- go last.  A cheap static minimum-degree heuristic:
+    # a variable's structural degree is its row's non-zero count.  Partial
+    # pivoting below still guarantees numerical stability on top of it.
+    set order {}
+    for {set i 0} {$i < $n} {incr i} { lappend order [list [dict size [dict get $orow $i]] $i] }
+    set perm {}
+    foreach pair [lsort -integer -index 0 $order] { lappend perm [lindex $pair 1] }
+    set pos [dict create]
+    for {set k 0} {$k < $n} {incr k} { dict set pos [lindex $perm $k] $k }
+
+    # Re-express the matrix and RHS in elimination order.  Two cross-linked
+    # views: row k -> (col -> value); col j -> (row -> 1).  The column view
+    # lets each step touch only the rows that couple to the pivot.
+    set row [dict create] ; set col [dict create] ; set b2 [lrepeat $n 0.0]
+    for {set k 0} {$k < $n} {incr k} { dict set row $k [dict create] }
+    for {set k 0} {$k < $n} {incr k} {
+        set oi [lindex $perm $k]
+        lset b2 $k [expr {double([lindex $b $oi])}]
+        dict for {oj v} [dict get $orow $oi] {
+            set pj [dict get $pos $oj]
+            dict set row $k $pj $v
+            dict set col $pj $k 1
+        }
+    }
+    set b $b2
 
     # Forward elimination with partial pivoting.
     for {set k 0} {$k < $n} {incr k} {
@@ -206,15 +228,18 @@ proc ::schem::la::solve_sparse {Avar b n} {
         }
     }
 
-    # Back substitution.
-    set x [lrepeat $n 0.0]
+    # Back substitution (in elimination order).
+    set xp [lrepeat $n 0.0]
     for {set i [expr {$n - 1}]} {$i >= 0} {incr i -1} {
         set irow [dict get $row $i]
         set s [lindex $b $i]
         dict for {c v} $irow {
-            if {$c > $i} { set s [expr {$s - $v * [lindex $x $c]}] }
+            if {$c > $i} { set s [expr {$s - $v * [lindex $xp $c]}] }
         }
-        lset x $i [expr {$s / [dict get $irow $i]}]
+        lset xp $i [expr {$s / [dict get $irow $i]}]
     }
+    # Un-permute: variable perm[k] was eliminated at position k.
+    set x [lrepeat $n 0.0]
+    for {set k 0} {$k < $n} {incr k} { lset x [lindex $perm $k] [lindex $xp $k] }
     return $x
 }
