@@ -138,6 +138,28 @@ proc ::schem::lib::decoder {{name dec} {n 2}} {
     return $c
 }
 
+# ---- sequencer: step through control phases, one line at a time ---------
+# A counter feeding a decoder: each clock advances the phase, and exactly one
+# control line P0..P(2^n-1) is active per step, cycling forever.  This is the
+# control unit of a machine -- the thing that drives "fetch, then execute,
+# then ..." purely electrically.  Ports: CLK P0..P(2^n-1).
+proc ::schem::lib::sequencer {{name seq} {n 2}} {
+    set c [::schem::circuit $name]
+    Rails $c
+    set cnt [$c instantiate [counter C $n] C]
+    set dec [$c instantiate [decoder D $n] D]
+    RailUp $c $cnt ; RailUp $c $dec
+    $c expose CLK [dict get $cnt CLK]
+    # Counter Q0 is the LSB; decoder A0 is the MSB.  Map so the decoded phase
+    # equals the count, so the active line steps 0,1,2,... in order.
+    for {set i 0} {$i < $n} {incr i} {
+        $c wire [dict get $cnt Q$i] [dict get $dec A[expr {$n-1-$i}]]
+    }
+    set phases [expr {1 << $n}]
+    for {set k 0} {$k < $phases} {incr k} { $c expose P$k [dict get $dec Y$k] }
+    return $c
+}
+
 # ---- accumulator: a register that adds its input on each clock ----------
 # An n-bit register whose stored value is fed back through an n-bit adder:
 # on each rising CLK edge, Q := Q + IN.  This is the canonical proof of

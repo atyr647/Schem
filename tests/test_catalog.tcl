@@ -119,6 +119,23 @@ test counter-3bit {a 3-bit counter steps 0..7 and wraps} -body {
     set seq
 } -result {0 1 2 3 4 5 6 7 0}
 
+# ---- sequencer: one-hot control phases stepping in order -----------------
+
+test sequencer {each clock advances to the next phase line, cycling} -body {
+    lassign [board sequencer seq 2] s g
+    insw $s $g CLK SCLK
+    proc tick {s} { setsw $s SCLK 0 ; $s solve ; setsw $s SCLK 1 ; $s solve }
+    proc activephase {s g} {
+        for {set k 0} {$k < 4} {incr k} { if {[hi $s [dict get $g P$k]]} { return $k } }
+        return -1
+    }
+    setsw $s SCLK 0 ; $s solve
+    set seq [activephase $s $g]
+    for {set t 0} {$t < 5} {incr t} { tick $s ; lappend seq [activephase $s $g] }
+    $s destroy
+    set seq
+} -result {0 1 2 3 0 1}
+
 # ---- accumulator: stateful arithmetic (a running total) ------------------
 
 test accumulator {Q := Q + IN on each clock} -body {
