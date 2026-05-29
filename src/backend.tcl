@@ -849,3 +849,84 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
     lappend S "}"
     return [join $S \n]
 }
+
+# ====================================================================
+#  digref -- the DIGITAL reference backend (boolean cycle evaluation).
+# ====================================================================
+#
+# The counterpart to dcref: where dcref/zig (literal mode) solve the real
+# electrical circuit by MNA, digref evaluates a *provably-digital* relay-logic
+# circuit as booleans -- a net is HIGH iff a closed-contact path connects it to
+# a supply rail, else LOW (the pull-down default), with relays switching on a
+# fixed point.  For a digital circuit this gives the IDENTICAL HIGH/LOW result
+# as the electrical solve, at O(nets+contacts) per pass instead of an O(n^3)
+# matrix factorisation.  It is the spec the `zig -digital` emitter transcribes,
+# and it is verified against the electrical engine.
+#
+# Returns a dict node-id -> 1 (HIGH) / 0 (LOW).  Refuses non-digital parts
+# (diodes, reactives, transformers) -- use literal mode for those.
+proc ::schem::backend::digref {cir} {
+    set N [dict get $cir nodes count]
+    set vcc {} ; set static {} ; set relays {} ; set unsupported {}
+    foreach e [dict get $cir elements] {
+        set nm [dict get $e name]
+        if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
+        switch [dict get $e class] {
+            source {
+                if {[dict get $nd neg] == 0} { lappend vcc [dict get $nd pos] } \
+                else { lappend unsupported "$nm (supply not referenced to ground)" }
+            }
+            switch    { if {[dict get $e state] in {closed pressed}} { lappend static [list [dict get $nd a] [dict get $nd b]] } }
+            conductance { }
+            relay {
+                set cn [dict get $e coil nodes] ; set kn [dict get $e contact nodes]
+                lappend relays [list [dict get $cn c1] [dict get $cn c2] [dict get $kn com] [dict get $kn no] [dict get $kn nc]]
+            }
+            meter      { lappend static [list [dict get $nd a] [dict get $nd b]] }
+            protective { if {[dict get $e state] in {intact closed}} { lappend static [list [dict get $nd a] [dict get $nd b]] } }
+            conductor  { lappend static [list [dict get $nd a] [dict get $nd b]] }
+            default    { lappend unsupported "$nm ([dict get $e type])" }
+        }
+    }
+    if {[llength $unsupported]} {
+        return -code error "digital mode needs a relay-logic circuit; not digital: [join $unsupported {, }]"
+    }
+    set energized [dict create]
+    for {set iter 0} {$iter < 1000} {incr iter} {
+        # closed-edge adjacency for this relay state
+        array unset adj ; array set adj {}
+        foreach e $static {
+            lappend adj([lindex $e 0]) [lindex $e 1] ; lappend adj([lindex $e 1]) [lindex $e 0]
+        }
+        set ri 0
+        foreach r $relays {
+            lassign $r c1 c2 com no nc
+            set t [expr {[dict exists $energized $ri] ? $no : $nc}]
+            lappend adj($com) $t ; lappend adj($t) $com
+            incr ri
+        }
+        # HIGH = reachable from any supply rail through closed contacts.
+        array unset high ; array set high {}
+        set queue {}
+        foreach v $vcc { if {![info exists high($v)]} { set high($v) 1 ; lappend queue $v } }
+        while {[llength $queue]} {
+            set cur [lindex $queue 0] ; set queue [lrange $queue 1 end]
+            foreach nb [expr {[info exists adj($cur)] ? $adj($cur) : {}}] {
+                if {![info exists high($nb)]} { set high($nb) 1 ; lappend queue $nb }
+            }
+        }
+        if {[info exists high(0)]} { unset high(0) }   ;# ground is never HIGH
+        # a coil is energised when it spans a HIGH-to-LOW differential
+        set newen [dict create] ; set ri 0
+        foreach r $relays {
+            lassign $r c1 c2 com no nc
+            if {[info exists high($c1)] != [info exists high($c2)]} { dict set newen $ri 1 }
+            incr ri
+        }
+        if {$newen eq $energized} break
+        set energized $newen
+    }
+    set v [dict create 0 0]
+    for {set i 1} {$i <= $N} {incr i} { dict set v $i [expr {[info exists high($i)] ? 1 : 0}] }
+    return $v
+}

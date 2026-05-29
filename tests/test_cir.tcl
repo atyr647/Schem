@@ -245,6 +245,47 @@ test dcref-fuse-blow {dcref blows an over-rating fuse (a fault state), like the 
     list [expr {abs([fz 1.0]) < 0.01}] [expr {[fz 5.0] > 11.9}]
 } -cleanup {rename ::fz {}} -result {1 1}
 
+test digref-matches-engine {digital evaluation == the electrical solve on digital circuits} -body {
+    # digref (boolean cycle eval) must agree with the engine (>6 V = HIGH) on
+    # every node, every input -- the guarantee that makes a digital backend a
+    # verified optimization rather than a shortcut.
+    proc ::dboard {builder} {
+        set s [schem::new t]
+        $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+        set g [$s instantiate [::schem::lib::$builder] U]
+        $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+        return [list $s $g]
+    }
+    proc ::dsw {s name port} { $s add switch $name ; $s wire VCC.pos $name.a ; $s wire $name.b $port }
+    set ok 1
+    foreach builder {and_gate or_gate nand_gate nor_gate xor_gate half_adder} {
+        lassign [dboard $builder] s g
+        dsw $s SA [dict get $g A] ; dsw $s SB [dict get $g B]
+        foreach {a b} {0 0  0 1  1 0  1 1} {
+            if {$a} {$s close SA} else {$s open SA}
+            if {$b} {$s close SB} else {$s open SB}
+            $s solve
+            set d [schem::backend::digref [$s compile]] ; set ir [$s compile]
+            dict for {nid terms} [dict get $ir nodes map] {
+                if {$nid == 0} continue
+                if {[expr {[$s probe [lindex $terms 0]] > 6 ? 1 : 0}] != [dict get $d $nid]} { set ok 0 }
+            }
+        }
+        $s destroy
+    }
+    rename ::dboard {} ; rename ::dsw {}
+    set ok
+} -result 1
+
+test digref-refuses-analog {digital mode refuses non-digital parts} -body {
+    set s [schem::new a]
+    $s add battery B ; $s add ground GND ; $s add diode D ; $s add resistor R
+    $s wire B.pos D.a ; $s wire D.k R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+    set rc [catch {schem::backend::digref [$s compile]} e]
+    $s destroy
+    list $rc [string match "*not digital*diode*" $e]
+} -result {1 1}
+
 test dcref-relay-truthtable {dcref reproduces a relay AND gate's truth table from the IR} -body {
     set res {}
     foreach {a b} {0 0  0 1  1 0  1 1} {
