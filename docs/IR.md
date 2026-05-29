@@ -56,13 +56,16 @@ emitted text; it registers by existing. The IR is the only contract, so a new
 target is a sibling proc — no engine change.
 
 ```tcl
-schem::emit $schematic zig      ;# -> Zig source
-schem::backends                 ;# -> {dcref zig}
+schem::emit $schematic zig            ;# -> literal (electrical) Zig
+schem::emit $schematic zig -digital   ;# -> digital (boolean) Zig
+schem::backends                       ;# -> {dcref digref zig}
 ```
 
-Two backends ship today:
+The backends ship today:
 
-- **`zig`** — emits a self-contained Zig program. Two modes:
+- **`zig`** — emits a self-contained Zig program. Same source/IR, choose the
+  *solver* it emits — **literal** (the electrical truth) or **digital** (a
+  verified, far faster boolean evaluator for digital circuits). Three modes:
   - **DC** (`schem emit zig FILE`) — the **full DC operating point** by
     Modified Nodal Analysis, with the engine's loops: an **outer fixed-point**
     over relay state (coil current → pick-up/drop-out → which contact is
@@ -83,16 +86,30 @@ Two backends ship today:
     engine's transient analyser. It prints a table of node voltages over time.
     The one remaining niche is transformer mutual coupling in transient (the
     engine covers it); nothing else diverges silently within scope.
-- **`dcref`** — a reference backend, in Tcl, that solves the DC operating
-  point *straight from the IR* (the same lowering the emitters use). It proves
-  the IR carries enough to reproduce the solve, and is the oracle the code
-  emitters are checked against: `tests/test_cir.tcl` asserts `dcref` matches
-  the electrical engine node-for-node.
+  - **Digital** (`schem emit zig FILE -digital`) — for a *provably-digital*
+    relay-logic circuit, a boolean cycle evaluator: a net is HIGH iff a
+    closed-contact path reaches a supply rail (reachability), relays switch on
+    a fixed point. It prints each node's logic level. This is **not** an
+    electrical solve — it is a verified, semantics-preserving compilation that
+    gives the **identical** HIGH/LOW result at O(nets+contacts) per pass
+    instead of an O(n^x) matrix factorisation (measured ~3× faster native on a
+    266-node adder, the gap widening with size). It refuses non-digital parts
+    (diodes/reactives/transformers) — use literal mode for those.
+- **`dcref`** — a Tcl reference for the *literal* mode: solves the DC operating
+  point straight from the IR (the same lowering the emitters use), the oracle
+  the literal emitters are checked against.
+- **`digref`** — a Tcl reference for the *digital* mode: the same boolean
+  cycle evaluation `zig -digital` emits, verified node-for-node against the
+  electrical engine.
 
-> Note: the emitted Zig is generated and structurally tested here, but not
-> compiled (no Zig toolchain in this environment). Its correctness rests on
-> the shared lowering — `dcref` exercises exactly the same `LowerDC` mapping
-> and is verified numerically against the engine.
+> **The two-mode guarantee.** Literal mode is the trusted electrical truth and
+> the default; digital mode is a verified optimization, never a shortcut. The
+> check is total and automatic — *emit both, run both, diff*: on a digital
+> circuit the compiled digital and literal programs (and the engine) must
+> agree on every node's HIGH/LOW, which `tests/test_cir.tcl` asserts.
+>
+> Verified against Zig 0.13.0 (set `SCHEM_ZIG` or have `zig` on `PATH` and the
+> compile-and-run tests execute; otherwise they skip cleanly).
 
 ## Examples
 

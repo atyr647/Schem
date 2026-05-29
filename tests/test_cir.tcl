@@ -44,6 +44,28 @@ proc zigNodes {s} {
     }
     return $v
 }
+proc zigDig {s} {
+    set f [file join [tcltest::temporaryDirectory] zd[pid].zig]
+    set fh [open $f w] ; puts $fh [schem::emit $s zig -digital] ; close $fh
+    set out [exec {*}[zigExe] run $f] ; file delete $f
+    set v [dict create]
+    foreach line [split $out \n] {
+        if {[regexp {N(\d+) = ([01])} $line -> nid val]} { dict set v $nid $val }
+    }
+    return $v
+}
+# the two-mode guarantee: compiled digital == compiled literal == engine.
+proc digLitEngineAgree {s} {
+    $s solve
+    set dig [zigDig $s] ; set lit [zigNodes $s] ; set ir [$s compile] ; set ok 1
+    dict for {nid terms} [dict get $ir nodes map] {
+        if {$nid == 0} continue
+        set eng [expr {[$s probe [lindex $terms 0]] > 6 ? 1 : 0}]
+        set lb  [expr {[dict get $lit $nid] > 6 ? 1 : 0}]
+        if {[dict get $dig $nid] != $eng || $lb != $eng} { set ok 0 }
+    }
+    return $ok
+}
 proc nodesMatch {s} {
     $s solve
     set z [zigNodes $s] ; set ir [$s compile] ; set ok 1
@@ -378,5 +400,39 @@ test zig-tran-fuse {transient Zig blows a fuse on its i2t curve, matching the en
     $s add battery B -emf 12 ; $s add ground GND ; $s add fuse F -rating 1.0 -i2t 0.05 ; $s add resistor R -r 3
     $s wire B.pos F.a ; $s wire F.b R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
 } -body { tranMatch $s 0.1 0.005 } -cleanup {$s destroy} -result ok
+
+# ---- the two Zig modes agree (digital == literal == engine) --------------
+
+test zig-digital-vs-literal {compiled digital and literal Zig agree, node-for-node} -constraints zig -setup {
+    proc ::eboard {builder} {
+        set s [schem::new t]
+        $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+        set g [$s instantiate [::schem::lib::$builder] U]
+        $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+        $s add switch SA ; $s wire VCC.pos SA.a ; $s wire SA.b [dict get $g A]
+        $s add switch SB ; $s wire VCC.pos SB.a ; $s wire SB.b [dict get $g B]
+        return $s
+    }
+} -body {
+    set ok 1
+    foreach builder {and_gate or_gate xor_gate nand_gate nor_gate half_adder} {
+        set s [eboard $builder]
+        foreach {a b} {0 0  0 1  1 0  1 1} {
+            if {$a} {$s close SA} else {$s open SA}
+            if {$b} {$s close SB} else {$s open SB}
+            if {![digLitEngineAgree $s]} { set ok 0 }
+        }
+        $s destroy
+    }
+    set ok
+} -cleanup {rename ::eboard {}} -result 1
+
+test zig-digital-full-adder {compiled digital Zig matches the engine on the full adder} -constraints zig -setup {
+    set s [schem::new fa]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    set g [$s instantiate [schem::lib::full_adder] U]
+    $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+    foreach p {A B CIN} { $s add switch S$p ; $s wire VCC.pos S$p.a ; $s wire S$p.b [dict get $g $p] ; $s close S$p }
+} -body { digLitEngineAgree $s } -cleanup {$s destroy} -result 1
 
 cleanupTests
