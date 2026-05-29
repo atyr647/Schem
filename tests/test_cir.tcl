@@ -233,6 +233,18 @@ test dcref-diode {dcref reproduces a diode's forward drop (Newton, from the IR)}
     set ok
 } -cleanup {$s destroy} -result 1
 
+test dcref-fuse-blow {dcref blows an over-rating fuse (a fault state), like the engine} -body {
+    proc ::fz {rating} {
+        set s [schem::new f]
+        $s add battery B -emf 12 ; $s add ground GND ; $s add fuse F -rating $rating ; $s add resistor R -r 5
+        $s wire B.pos F.a ; $s wire F.b R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+        set ir [$s compile] ; set rn 0
+        dict for {nid t} [dict get $ir nodes map] { if {"R.a" in $t} {set rn $nid} }
+        set v [schem::backend::dcref $ir] ; $s destroy ; return [dict get $v $rn]
+    }
+    list [expr {abs([fz 1.0]) < 0.01}] [expr {[fz 5.0] > 11.9}]
+} -cleanup {rename ::fz {}} -result {1 1}
+
 test dcref-relay-truthtable {dcref reproduces a relay AND gate's truth table from the IR} -body {
     set res {}
     foreach {a b} {0 0  0 1  1 0  1 1} {
@@ -306,5 +318,24 @@ test zig-tran-events {emitted Zig honours timed stimulus (-events), matching the
     $s add resistor R -r 100 ; $s add capacitor C -c 1e-3
     $s wire B.pos SW.a ; $s wire SW.b R.a ; $s wire R.b C.a ; $s wire C.b GND.t ; $s wire B.neg GND.t
 } -body { tranMatch $s 0.01 0.001 {0.003 {close SW}} } -cleanup {$s destroy} -result ok
+
+# ---- protective devices blow/trip in the compiled backends ----------------
+
+test zig-run-fuse {compiled DC Zig blows an over-rating fuse} -constraints zig -setup {
+    set s [schem::new f]
+    $s add battery B -emf 12 ; $s add ground GND ; $s add fuse F -rating 1.0 ; $s add resistor R -r 5
+    $s wire B.pos F.a ; $s wire F.b R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+} -body {
+    set z [zigNodes $s]   ;# emits the pristine (intact) circuit, then runs
+    set ir [$s compile] ; set rn 0
+    dict for {nid t} [dict get $ir nodes map] { if {"R.a" in $t} {set rn $nid} }
+    expr {abs([dict get $z $rn]) < 0.01}
+} -cleanup {$s destroy} -result 1
+
+test zig-tran-fuse {transient Zig blows a fuse on its i2t curve, matching the engine} -constraints zig -setup {
+    set s [schem::new tf]
+    $s add battery B -emf 12 ; $s add ground GND ; $s add fuse F -rating 1.0 -i2t 0.05 ; $s add resistor R -r 3
+    $s wire B.pos F.a ; $s wire F.b R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+} -body { tranMatch $s 0.1 0.005 } -cleanup {$s destroy} -result ok
 
 cleanupTests

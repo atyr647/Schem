@@ -64,23 +64,25 @@ Two backends ship today:
 
 - **`zig`** — emits a self-contained Zig program. Two modes:
   - **DC** (`schem emit zig FILE`) — the **full DC operating point** by
-    Modified Nodal Analysis, with the engine's two loops: an **outer
-    fixed-point over relay state** (coil current → pick-up/drop-out → which
-    contact is closed) and an **inner Newton over diodes** (Shockley + Zener,
-    series resistance). Covers every element at its DC behaviour — resistors,
+    Modified Nodal Analysis, with the engine's loops: an **outer fixed-point**
+    over relay state (coil current → pick-up/drop-out → which contact is
+    closed) **and protective state** (a fuse blows / breaker trips on
+    over-rating current — an irreversible fault the rest of the circuit then
+    sees), and an **inner Newton over diodes** (Shockley + Zener, series
+    resistance). Covers every element at its DC behaviour — resistors,
     batteries with ESR, switches, relays, diodes, ammeters, gauged wires,
-    fuses/breakers, transformer windings (shorts at DC), inductors (a DC
-    short), capacitors (open).
+    fuses/breakers (which can blow), transformer windings (shorts at DC),
+    inductors (a DC short), capacitors (open).
   - **Transient** (`schem emit zig FILE -transient -duration T -dt DT
     ?-events {t {op SW} …}?`) — a time-stepping solver with backward-Euler
     companion models (capacitors with ESR/leakage, inductors and inductive
     relay coils with winding R), Newton for diodes each step, relays switching
-    with the one-step lag, propagation delay and hysteresis, and timed
-    **stimulus** (switches/buttons operated on a schedule) — the engine's
-    transient analyser. It prints a table of node voltages over time. Two
-    niches are not emitted in transient: transformer mutual coupling and
-    mid-run protective tripping (a fuse/breaker conducts as intact); the
-    engine covers both. Nothing diverges silently within scope.
+    with the one-step lag, propagation delay and hysteresis, **fuses/breakers
+    that blow on their `i2t` time-current curve** (instantaneous when `i2t`=0),
+    and timed **stimulus** (switches/buttons operated on a schedule) — the
+    engine's transient analyser. It prints a table of node voltages over time.
+    The one remaining niche is transformer mutual coupling in transient (the
+    engine covers it); nothing else diverges silently within scope.
 - **`dcref`** — a reference backend, in Tcl, that solves the DC operating
   point *straight from the IR* (the same lowering the emitters use). It proves
   the IR carries enough to reproduce the solve, and is the oracle the code
@@ -113,8 +115,10 @@ engine**. With a Zig toolchain available (`SCHEM_ZIG=/path/to/zig`, or `zig`
 on `PATH`), `tests/test_cir.tcl` emits the Zig, compiles + runs it, and
 compares node-for-node:
 
-- **DC**: the divider, a diode (Newton) and a relay AND gate (fixed-point).
-- **Transient**: an RC charge, an RL ramp and the relay oscillator —
+- **DC**: the divider, a diode (Newton), a relay AND gate (fixed-point) and
+  an over-rating fuse that **blows** (`dcref` and compiled Zig).
+- **Transient**: an RC charge, an RL ramp, the relay oscillator, a
+  switch-gated charge (`-events`) and a fuse blowing on its `i2t` curve —
   step-for-step against the engine's `run()`.
 
 These were verified against Zig 0.13.0; every case matches to within `1e-3`.
@@ -127,7 +131,6 @@ checked against the engine.
 
 The IR is the foundation for running very large grids at full speed (compile
 once, run native) and the natural home for a compiled, fill-reduced
-elimination schedule. The remaining transient edges (transformer mutual
-coupling, mid-run protective tripping) are extensions, no IR or source
-change. After that: more targets (C / WASM / HDL), each a sibling proc over
-the same IR.
+elimination schedule. The one remaining transient edge (transformer mutual
+coupling) is an extension, no IR or source change. After that: more targets
+(C / WASM / HDL), each a sibling proc over the same IR.

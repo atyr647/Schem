@@ -48,7 +48,7 @@ proc ::schem::backends {} {
 # state-controlled conductances; diodes are nonlinear.  Capacitors are open at
 # DC and drop out.  Nothing is refused -- every part has a DC lowering.
 proc ::schem::backend::LowerDC {cir} {
-    set conds {} ; set branches {} ; set relays {} ; set diodes {}
+    set conds {} ; set branches {} ; set relays {} ; set diodes {} ; set protect {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -92,6 +92,7 @@ proc ::schem::backend::LowerDC {cir} {
             }
             protective {
                 if {[dict get $e state] in {intact closed}} {
+                    lappend protect [list [llength $branches] [dict get $e rating] [dict get $e i2t] $nm]
                     lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm]
                 }
             }
@@ -107,7 +108,7 @@ proc ::schem::backend::LowerDC {cir} {
     }
     set n [dict get $cir nodes count]
     return [dict create n $n sz [expr {$n + [llength $branches]}] \
-        conds $conds branches $branches relays $relays diodes $diodes]
+        conds $conds branches $branches relays $relays diodes $diodes protect $protect]
 }
 
 # DiodeGI -- junction current Id and small-signal conductance gj at junction
@@ -144,10 +145,12 @@ proc ::schem::backend::dcref {cir} {
     if {$SZ == 0} { return [dict create 0 0.0] }
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
+    set protect [dict get $L protect]
     set gc [expr {1.0/$RSMALL}]
 
     set energized [lrepeat [llength $relays] 0]
     set diodeV    [lrepeat [llength $diodes] 0.0]
+    set fbopen    [dict create]   ;# protective branch index -> 1 once tripped
     set x {}
 
     for {set outer 0} {$outer < 200} {incr outer} {
@@ -174,10 +177,16 @@ proc ::schem::backend::dcref {cir} {
             foreach br $branches {
                 lassign $br p q emf rs _
                 set row [expr {$N + $k}]
-                if {$p != 0} { ::schem::la::spacc A [expr {$p-1}] $row 1.0 ; ::schem::la::spacc A $row [expr {$p-1}] 1.0 }
-                if {$q != 0} { ::schem::la::spacc A [expr {$q-1}] $row -1.0 ; ::schem::la::spacc A $row [expr {$q-1}] -1.0 }
-                if {$rs != 0} { ::schem::la::spacc A $row $row [expr {-$rs}] }
-                lset z $row $emf
+                if {[dict exists $fbopen $k]} {
+                    # blown/tripped protective device: force I_branch = 0 (open).
+                    ::schem::la::spacc A $row $row 1.0
+                    lset z $row 0.0
+                } else {
+                    if {$p != 0} { ::schem::la::spacc A [expr {$p-1}] $row 1.0 ; ::schem::la::spacc A $row [expr {$p-1}] 1.0 }
+                    if {$q != 0} { ::schem::la::spacc A [expr {$q-1}] $row -1.0 ; ::schem::la::spacc A $row [expr {$q-1}] -1.0 }
+                    if {$rs != 0} { ::schem::la::spacc A $row $row [expr {-$rs}] }
+                    lset z $row $emf
+                }
                 incr k
             }
             set x [::schem::la::solve_sparse A $z $SZ]
@@ -205,6 +214,14 @@ proc ::schem::backend::dcref {cir} {
             set was [lindex $energized $ri]
             set now [expr {$was ? ($ic >= $do) : ($ic >= $pu)}]
             if {$now != $was} { lset energized $ri $now ; set changed 1 }
+        }
+        # Protective devices blow/trip on over-rating current.  At DC (steady
+        # state = infinite time) this is instantaneous regardless of i2t, like
+        # the engine: the branch current is the unknown at row N+branchIdx.
+        foreach p $protect {
+            lassign $p bi rating i2t nm
+            if {[dict exists $fbopen $bi]} continue
+            if {abs([lindex $x [expr {$N + $bi}]]) > $rating} { dict set fbopen $bi 1 ; set changed 1 }
         }
         if {!$changed} break
     }
@@ -256,8 +273,12 @@ proc ::schem::backend::zig {cir args} {
     set N [dict get $L n] ; set SZ [dict get $L sz]
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
-    set NR [llength $relays] ; set ND [llength $diodes]
+    set protect [dict get $L protect]
+    set NR [llength $relays] ; set ND [llength $diodes] ; set NP [llength $protect]
     set name [dict get $cir name]
+    # map branch index -> protective index (which branches can blow/trip)
+    set b2p [dict create] ; set pj 0
+    foreach p $protect { dict set b2p [lindex $p 0] $pj ; incr pj }
 
     # --- metadata arrays for relays and diodes ---
     proc Zarr {ty vals} { return "\[[llength $vals]\]$ty{[join $vals {, }]}" }
@@ -287,7 +308,13 @@ proc ::schem::backend::zig {cir args} {
     set k 0
     foreach br $branches {
         lassign $br p q emf rs nm
-        lappend base "    stampBranch(a, z, [expr {$N+$k}], $p, $q, [Zf $emf], [Zf $rs]); // $nm"
+        set row [expr {$N+$k}]
+        if {[dict exists $b2p $k]} {
+            # protective device: open (I=0) once blown/tripped, else conduct.
+            lappend base "    if (fb_open\[[dict get $b2p $k]\]) { a\[$row*SZ+$row\] += 1.0; z\[$row\] = 0.0; } else stampBranch(a, z, $row, $p, $q, [Zf $emf], [Zf $rs]); // $nm"
+        } else {
+            lappend base "    stampBranch(a, z, $row, $p, $q, [Zf $emf], [Zf $rs]); // $nm"
+        }
         incr k
     }
 
@@ -309,8 +336,16 @@ proc ::schem::backend::zig {cir args} {
     lappend S "const SZ: usize = $SZ;"
     lappend S "const NR: usize = $NR;"
     lappend S "const ND: usize = $ND;"
+    lappend S "const NP: usize = $NP;"
     lappend S "const RSMALL: f64 = [Zf $RSMALL];"
     lappend S ""
+    if {$NP} {
+        set fb_row {} ; set fb_rating {}
+        foreach p $protect { lappend fb_row [expr {$N + [lindex $p 0]}] ; lappend fb_rating [Zf [lindex $p 1]] }
+        lappend S "const fb_row = [Zarr usize $fb_row];"
+        lappend S "const fb_rating = [Zarr f64 $fb_rating];"
+        lappend S "var fb_open = \[_\]bool{false} ** NP;"
+    }
     if {$NR} {
         lappend S "const r_c1 = [Zarr usize $r_c1];"
         lappend S "const r_c2 = [Zarr usize $r_c2];"
@@ -435,15 +470,22 @@ proc ::schem::backend::zig {cir args} {
         lappend S "            break;"
     }
     lappend S "        }"
-    if {$NR} {
+    if {$NR || $NP} {
         lappend S "        var changed = false;"
-        lappend S "        var r: usize = 0;"
-        lappend S "        while (r < NR) : (r += 1) {"
-        lappend S "            const ic = @abs(nv(z\[0..\], r_c1\[r\]) - nv(z\[0..\], r_c2\[r\])) / r_rc\[r\];"
-        lappend S "            const was = energized\[r\];"
-        lappend S "            const now = if (was) (ic >= r_do\[r\]) else (ic >= r_pu\[r\]);"
-        lappend S "            if (now != was) { energized\[r\] = now; changed = true; }"
-        lappend S "        }"
+        if {$NR} {
+            lappend S "        { var r: usize = 0; while (r < NR) : (r += 1) {"
+            lappend S "            const ic = @abs(nv(z\[0..\], r_c1\[r\]) - nv(z\[0..\], r_c2\[r\])) / r_rc\[r\];"
+            lappend S "            const was = energized\[r\];"
+            lappend S "            const now = if (was) (ic >= r_do\[r\]) else (ic >= r_pu\[r\]);"
+            lappend S "            if (now != was) { energized\[r\] = now; changed = true; }"
+            lappend S "        } }"
+        }
+        if {$NP} {
+            # protective devices blow/trip on over-rating current (instant at DC)
+            lappend S "        { var p: usize = 0; while (p < NP) : (p += 1) {"
+            lappend S "            if (!fb_open\[p\] and @abs(z\[fb_row\[p\]\]) > fb_rating\[p\]) { fb_open\[p\] = true; changed = true; }"
+            lappend S "        } }"
+        }
         lappend S "        if (!changed) break;"
     } else {
         lappend S "        break;"
@@ -477,6 +519,7 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
     set conds {} ; set branches {} ; set relays {} ; set diodes {}
     set caps {} ; set inds {} ; set coils {}
     set switches {} ; set swidx [dict create]   ;# runtime switch state for -events
+    set protect {}                                ;# fuses/breakers that can trip
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -489,7 +532,7 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
                     [expr {[dict get $e state] in {closed pressed} ? "true" : "false"}]]
             }
             meter       { lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] }
-            protective  { if {[dict get $e state] in {intact closed}} { lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] } }
+            protective  { if {[dict get $e state] in {intact closed}} { lappend protect [list [llength $branches] [dict get $e rating] [dict get $e i2t] $nm] ; lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] } }
             conductor   { set r [dict get $e r] ; if {$r > 0} { lappend conds [list [dict get $nd a] [dict get $nd b] [expr {1.0/$r}] $nm] } else { lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] } }
             nonlinear   { set m [dict get $e model] ; lappend diodes [list [dict get $nd a] [dict get $nd k] [dict get $m is] [dict get $m n] [dict get $m rs] [dict get $m bv] $nm] }
             reactive {
@@ -519,7 +562,9 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
     set SZ [expr {$N + [llength $branches]}]
     set NR [llength $relays] ; set ND [llength $diodes]
     set NC [llength $caps] ; set NL [llength $inds] ; set NK [llength $coils]
-    set NS [llength $switches]
+    set NS [llength $switches] ; set NP [llength $protect]
+    set b2p [dict create] ; set pj 0
+    foreach p $protect { dict set b2p [lindex $p 0] $pj ; incr pj }
     # compile the -events stimulus into {step swIndex newState} actions
     set actions {}
     foreach {t op} $events {
@@ -543,8 +588,16 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
     lappend S "const DT: f64 = [Zf $dt];"
     lappend S "const NSTEPS: usize = $nsteps;"
     lappend S "const RSMALL: f64 = [Zf $RSMALL];"
-    lappend S "const NR: usize = $NR; const ND: usize = $ND; const NC: usize = $NC; const NL: usize = $NL; const NK: usize = $NK; const NS: usize = $NS;"
+    lappend S "const NR: usize = $NR; const ND: usize = $ND; const NC: usize = $NC; const NL: usize = $NL; const NK: usize = $NK; const NS: usize = $NS; const NP: usize = $NP;"
     lappend S ""
+    # protective devices (fuses/breakers) that can trip during the run
+    if {$NP} {
+        set fb_row {} ; set fb_rating {} ; set fb_i2t {}
+        foreach p $protect { lappend fb_row [expr {$N + [lindex $p 0]}] ; lappend fb_rating [Zf [lindex $p 1]] ; lappend fb_i2t [Zf [lindex $p 2]] }
+        lappend S "const fb_row = [A2 usize $fb_row]; const fb_rating = [A2 f64 $fb_rating]; const fb_i2t = [A2 f64 $fb_i2t];"
+        lappend S "var fb_open = \[_\]bool{false} ** NP;"
+        lappend S "var fb_heat = \[_\]f64{0} ** NP;"
+    }
     # switch state (driven by -events)
     if {$NS} {
         set s_a {} ; set s_b {} ; set s_rc {} ; set s_init {}
@@ -648,7 +701,16 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
     lappend S "    { var i: usize = 0; while (i < N) : (i += 1) a\[i*SZ+i\] += 1e-12; }"
     foreach c $conds { lassign $c na nb g nm ; lappend S "    stampG(a, $na, $nb, [Zf $g]); // $nm" }
     set k 0
-    foreach br $branches { lassign $br p q emf rs nm ; lappend S "    stampBranch(a, z, [expr {$N+$k}], $p, $q, [Zf $emf], [Zf $rs]); // $nm" ; incr k }
+    foreach br $branches {
+        lassign $br p q emf rs nm
+        set row [expr {$N+$k}]
+        if {[dict exists $b2p $k]} {
+            lappend S "    if (fb_open\[[dict get $b2p $k]\]) { a\[$row*SZ+$row\] += 1.0; z\[$row\] = 0.0; } else stampBranch(a, z, $row, $p, $q, [Zf $emf], [Zf $rs]); // $nm"
+        } else {
+            lappend S "    stampBranch(a, z, $row, $p, $q, [Zf $emf], [Zf $rs]); // $nm"
+        }
+        incr k
+    }
     if {$NS} {
         lappend S "    { var w: usize = 0; while (w < NS) : (w += 1) { if (sw_state\[w\]) stampG(a, s_a\[w\], s_b\[w\], 1.0 / s_rc\[w\]); } }"
     }
@@ -765,6 +827,21 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
         lappend S "            else {"
         lappend S "                if (pend_t\[r\] != now) { pend_t\[r\] = now; pend_s\[r\] = tnow; }"
         lappend S "                if (tnow - pend_s\[r\] >= r_dl\[r\]) energized\[r\] = now;"
+        lappend S "            }"
+        lappend S "        } }"
+    }
+    # protective tripping: a fuse blows / breaker trips on over-rating current.
+    # i2t == 0 -> instantaneous; i2t > 0 -> inverse time-current (heat builds as
+    # (I^2 - rating^2)*dt, cools below rating, trips when it exceeds i2t).
+    if {$NP} {
+        lappend S "        { var p: usize = 0; while (p < NP) : (p += 1) {"
+        lappend S "            if (fb_open\[p\]) continue;"
+        lappend S "            const ip = @abs(z\[fb_row\[p\]\]);"
+        lappend S "            if (fb_i2t\[p\] <= 0) { if (ip > fb_rating\[p\]) fb_open\[p\] = true; }"
+        lappend S "            else {"
+        lappend S "                if (ip > fb_rating\[p\]) fb_heat\[p\] += (ip*ip - fb_rating\[p\]*fb_rating\[p\]) * DT"
+        lappend S "                else fb_heat\[p\] = @max(0.0, fb_heat\[p\] - fb_rating\[p\]*fb_rating\[p\]*DT);"
+        lappend S "                if (fb_heat\[p\] >= fb_i2t\[p\]) fb_open\[p\] = true;"
         lappend S "            }"
         lappend S "        } }"
     }
