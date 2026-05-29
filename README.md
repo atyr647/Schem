@@ -172,6 +172,7 @@ $ tclsh tests/test_cir.tcl       #  9: circuit IR lowering + Zig/dcref backends
 | `examples/sequencer.tcl`               | counter+decoder control phases (FETCH/EXEC/...) |
 | `examples/computer.tcl`                | a controlled multiplier panel that halts |
 | `examples/grid.tcl`                    | panels composed into a grid (the full hierarchy) |
+| `examples/voltage_divider.zig`         | a sample `schem emit zig` DC solver (generated) |
 
 ## Repository layout
 
