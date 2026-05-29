@@ -1,0 +1,200 @@
+# engine.tcl --
+#
+# The Schem circuit engine.  This is the interpreter for the Schem visual
+# electrical language: it reads a *schematic* (components, terminals, and
+# the wires that join them) and computes the electrical state by obeying
+# the fundamental rules of electricity:
+#
+#   * Continuity      current flows only around closed conductive loops
+#   * Ohm's law       V = I * R across every resistance
+#   * Kirchhoff KCL   currents into a node sum to zero
+#   * Kirchhoff KVL   voltages around a loop sum to zero
+#   * Reference       ground defines 0 V
+#
+# The solving technique is Modified Nodal Analysis (MNA): the schematic is
+# flattened into a linear system  A x = z  whose unknowns are the node
+# voltages and the branch currents of ideal conductors / sources.  Ideal
+# wires merge terminals into shared nodes (continuity); resistances stamp
+# conductances; sources and ideal conductors add current-branch unknowns.
+#
+# Stateful and nonlinear devices (relays, fuses, breakers, diodes) make the
+# system nonlinear, so the engine wraps the linear solve in two loops:
+#   * an inner Newton loop that linearises diodes, and
+#   * an outer fixed-point loop that re-evaluates device state (a relay
+#     that just energised closes its contacts, a fuse that just saw too
+#     much current blows, ...) and re-solves until the schematic settles.
+#
+# The schematic is the source of truth.  The matrices built here are
+# transient internal scaffolding, exactly as the language manifesto
+# requires.
+
+package require TclOO
+source [file join [file dirname [info script]] solver.tcl]
+
+namespace eval ::schem {
+    variable VERSION 1.0
+
+    # ----------------------------------------------------------------
+    # Component metadata: terminals each part type exposes, and the
+    # default parameters for its electrical behaviour.
+    # ----------------------------------------------------------------
+    variable META
+    array set META {
+        battery   {terminals {pos neg}     params {emf 9.0 esr 0.0}}
+        ground    {terminals {t}           params {}}
+        resistor  {terminals {a b}         params {r 1000.0}}
+        capacitor {terminals {a b}         params {c 1e-6 v0 0.0}}
+        inductor  {terminals {a b}         params {l 1e-3 i0 0.0}}
+        switch    {terminals {a b}         params {state open}}
+        button    {terminals {a b}         params {state released}}
+        relay     {terminals {c1 c2 com no nc} params {coil 100.0 pickup 0.01}}
+        breaker   {terminals {a b}         params {rating 10.0 state closed}}
+        fuse      {terminals {a b}         params {rating 1.0 state intact}}
+        diode     {terminals {a k}         params {is 1e-14 n 1.0}}
+        bus       {terminals {t}           params {}}
+        junction  {terminals {t}           params {}}
+        ammeter   {terminals {a b}         params {}}
+    }
+
+    # AWG -> continuous ampacity (amps), a representative subset.
+    variable AMPACITY
+    array set AMPACITY {
+        22 7.0  20 11.0  18 16.0  16 22.0  14 32.0
+        12 41.0  10 55.0  8 73.0  6 101.0  4 135.0
+    }
+}
+
+# ====================================================================
+#  Schematic -- one electrical artifact (a board / circuit / panel).
+# ====================================================================
+oo::class create ::schem::Schematic {
+    variable Comp     ;# name -> dict(type params state)
+    variable Conns    ;# list of merge connections {a b awg}; awg "" = ideal
+    variable Node     ;# terminal -> resolved node id (after build)
+    variable NNodes   ;# number of non-ground nodes
+    variable Result   ;# last solve: dict(v branchI ...)
+    variable Faults   ;# list of fault descriptions from last solve
+    variable Diode    ;# diode name -> last junction voltage (Newton state)
+    variable Name
+
+    constructor {{name schematic}} {
+        set Name $name
+        set Comp [dict create]
+        set Conns {}
+        set Result [dict create]
+        set Faults {}
+        set Diode [dict create]
+    }
+
+    method name {} { return $Name }
+
+    # ---- construction (the "workbench") ----------------------------
+
+    # add -- place a component on the board.
+    #   add TYPE NAME ?-param value ...?
+    method add {type name args} {
+        variable ::schem::META
+        if {![info exists META($type)]} {
+            return -code error "unknown component type \"$type\""
+        }
+        if {[dict exists $Comp $name]} {
+            return -code error "duplicate component name \"$name\""
+        }
+        set meta $META($type)
+        set params [dict get $meta params]
+        foreach {k v} $args {
+            set key [string trimleft $k -]
+            if {![dict exists $params $key]} {
+                return -code error "component $type has no parameter \"$key\""
+            }
+            dict set params $key $v
+        }
+        dict set Comp $name [dict create type $type params $params]
+        return $name
+    }
+
+    # wire -- join two terminals with a conductor (continuity).
+    #   wire A.pin B.pin ?-awg N?
+    # Without -awg the wire is ideal and simply merges the two terminals
+    # into one node.  With -awg the wire is a measurable conductor whose
+    # current is checked against the gauge's ampacity (overload -> fault).
+    method wire {ta tb args} {
+        my ResolveTerm $ta
+        my ResolveTerm $tb
+        set awg ""
+        foreach {k v} $args {
+            if {$k eq "-awg"} { set awg $v } else {
+                return -code error "wire: unknown option $k"
+            }
+        }
+        lappend Conns [list $ta $tb $awg]
+        return
+    }
+
+    # set -- change a parameter or state of a placed component.
+    method set {name key value} {
+        if {![dict exists $Comp $name]} {
+            return -code error "no such component \"$name\""
+        }
+        dict set Comp $name params [dict replace \
+            [dict get $Comp $name params] $key $value]
+        return
+    }
+
+    method get {name {key ""}} {
+        if {![dict exists $Comp $name]} {
+            return -code error "no such component \"$name\""
+        }
+        set p [dict get $Comp $name params]
+        if {$key eq ""} { return $p }
+        return [dict get $p $key]
+    }
+
+    # press / release / open / close / reset -- convenience verbs.
+    method press   {name} { my set $name state pressed }
+    method release {name} { my set $name state released }
+    method close   {name} { my set $name state closed }
+    method open    {name} { my set $name state open }
+    method reset   {name} {
+        set t [dict get $Comp $name type]
+        switch $t {
+            breaker { my set $name state closed }
+            fuse    { return -code error "a blown fuse cannot be reset (irreversible fault)" }
+            default { return -code error "$t has nothing to reset" }
+        }
+    }
+
+    method components {} { return [dict keys $Comp] }
+    method typeof {name} { return [dict get $Comp $name type] }
+
+    # ---- terminal helpers ------------------------------------------
+
+    method ResolveTerm {term} {
+        lassign [split $term .] name pin
+        if {![dict exists $Comp $name]} {
+            return -code error "no such component \"$name\" in terminal \"$term\""
+        }
+        variable ::schem::META
+        set type [dict get $Comp $name type]
+        set valid [dict get $META($type) terminals]
+        if {$pin ni $valid} {
+            return -code error "$type \"$name\" has no terminal \"$pin\" (has: $valid)"
+        }
+        return $term
+    }
+
+    method AllTerminals {} {
+        variable ::schem::META
+        set out {}
+        dict for {name c} $Comp {
+            set type [dict get $c type]
+            foreach pin [dict get $META($type) terminals] {
+                lappend out $name.$pin
+            }
+        }
+        return $out
+    }
+}
+
+# Load the simulation methods (kept in a separate file for clarity).
+source [file join [file dirname [info script]] simulate.tcl]
