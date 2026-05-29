@@ -118,21 +118,73 @@ test zig-emits-divider {the Zig backend emits a well-formed DC solver for the di
 } -body {
     list [has $z "const N: usize = 2;"] \
          [has $z "const SZ: usize = 3;"] \
-         [has $z "+= 0.001;"] \
-         [has $z "+= 0.0005;"] \
-         [has $z "z\[2\] = 9.0;"] \
+         [has $z "stampG(a, 1, 2, 0.001);"] \
+         [has $z "stampBranch(a, z, 2, 1, 0, 9.0, 0.0);"] \
          [has $z "fn solve("] \
+         [has $z "while (outer < 200)"] \
          [has $z "pub fn main()"]
 } -cleanup {$s destroy} -result {1 1 1 1 1 1 1}
 
-test zig-refuses-unsupported {the Zig DC backend refuses nonlinear/stateful/coupled parts} -body {
-    set s [schem::new x]
-    $s add battery B ; $s add ground GND ; $s add diode D
-    $s wire B.pos D.a ; $s wire D.k GND.t ; $s wire B.neg GND.t
-    set rc [catch {schem::emit $s zig} e]
-    $s destroy
-    list $rc [string match "*does not yet support*diode*" $e]
-} -result {1 1}
+test zig-emits-diode {a diode emits the metadata + Newton loop} -setup {
+    set s [schem::new di]
+    $s add battery B -emf 5 ; $s add ground GND ; $s add diode D ; $s add resistor R -r 1000
+    $s wire B.pos D.a ; $s wire D.k R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+    set z [schem::emit $s zig]
+    proc has {h n} { expr {[string first $n $h] >= 0} }
+} -body {
+    list [has $z "const ND: usize = 1;"] [has $z "fn diodeComp("] \
+         [has $z "var diodeV"] [has $z "if (maxd < 1e-9) break;"]
+} -cleanup {$s destroy} -result {1 1 1 1}
+
+test zig-emits-relay {a relay emits the contact arrays + fixed-point loop} -setup {
+    set s [schem::new andg]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    set g [$s instantiate [schem::lib::and_gate] U]
+    $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+    set z [schem::emit $s zig]
+    proc has {h n} { expr {[string first $n $h] >= 0} }
+} -body {
+    list [expr {[has $z "const NR: usize = 0;"] ? 0 : 1}] \
+         [has $z "var energized"] \
+         [has $z "stampG(&a, r_com\[r\], r_no\[r\], 1.0 / RSMALL)"] \
+         [has $z "if (!changed) break;"]
+} -cleanup {$s destroy} -result {1 1 1 1}
+
+# ---- the IR reproduces nonlinear (diode) and stateful (relay) DC solves ---
+
+test dcref-diode {dcref reproduces a diode's forward drop (Newton, from the IR)} -setup {
+    set s [schem::new d]
+    $s add battery B -emf 5 ; $s add ground GND ; $s add diode D ; $s add resistor R -r 1000
+    $s wire B.pos D.a ; $s wire D.k R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+    $s solve
+} -body {
+    set v [schem::backend::dcref [$s compile]]
+    set ir [$s compile] ; set ok 1
+    dict for {nid terms} [dict get $ir nodes map] {
+        if {$nid == 0} continue
+        if {abs([dict get $v $nid] - [$s probe [lindex $terms 0]]) > 1e-3} { set ok 0 }
+    }
+    set ok
+} -cleanup {$s destroy} -result 1
+
+test dcref-relay-truthtable {dcref reproduces a relay AND gate's truth table from the IR} -body {
+    set res {}
+    foreach {a b} {0 0  0 1  1 0  1 1} {
+        set s [schem::new t]
+        $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+        set g [$s instantiate [schem::lib::and_gate] U]
+        $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+        $s add switch SA ; $s wire VCC.pos SA.a ; $s wire SA.b [dict get $g A]
+        $s add switch SB ; $s wire VCC.pos SB.a ; $s wire SB.b [dict get $g B]
+        if {$a} {$s close SA} ; if {$b} {$s close SB}
+        set ir [$s compile] ; set on 0
+        dict for {nid terms} [dict get $ir nodes map] { if {[dict get $g OUT] in $terms} {set on $nid} }
+        set v [schem::backend::dcref $ir]
+        lappend res [expr {[dict get $v $on] > 6 ? 1 : 0}]
+        $s destroy
+    }
+    set res
+} -result {0 0 0 1}
 
 test backends-registered {the backend registry lists available targets} -body {
     expr {"zig" in [schem::backends] && "dcref" in [schem::backends]}

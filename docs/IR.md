@@ -62,15 +62,18 @@ schem::backends                 ;# -> {dcref zig}
 
 Two backends ship today:
 
-- **`zig`** — emits a self-contained Zig program that solves the **DC
-  operating point** by Modified Nodal Analysis (straight-line conductance and
-  source stamps + a Gaussian-elimination solver), then prints the node
-  voltages. It covers the linear DC elements at their stated device state
-  (resistors, batteries with ESR, closed switches, ammeters, gauged wires,
-  fuses/breakers, inductors as a DC short, capacitors open). Elements that
-  need the nonlinear / stateful / transient code-gen layer (diodes, relays,
-  transformers) are reported as unsupported — the IR already carries their
-  parameters for when that layer is built.
+- **`zig`** — emits a self-contained Zig program that solves the **full DC
+  operating point** by Modified Nodal Analysis, with the same two loops the
+  engine uses: an **outer fixed-point over relay state** (coil current →
+  pick-up/drop-out → which contact is closed) and an **inner Newton over
+  diodes** (Shockley + Zener, series resistance). It covers every element at
+  its DC behaviour — resistors, batteries with ESR, switches, **relays**,
+  **diodes**, ammeters, gauged wires, fuses/breakers, transformer windings
+  (shorts at DC), inductors (a DC short), capacitors (open). The relay and
+  diode metadata are emitted as Zig arrays and the contact/companion stamps
+  are recomputed each iteration. (Transient — companion stepping over time —
+  is the next layer; the IR already carries `v0`/`i0`/`L`/`C`/`coilL`/`delay`
+  for it.)
 - **`dcref`** — a reference backend, in Tcl, that solves the DC operating
   point *straight from the IR* (the same lowering the emitters use). It proves
   the IR carries enough to reproduce the solve, and is the oracle the code
@@ -82,28 +85,32 @@ Two backends ship today:
 > the shared lowering — `dcref` exercises exactly the same `LowerDC` mapping
 > and is verified numerically against the engine.
 
-## Example
+## Examples
 
-`examples/voltage_divider.zig` is a committed sample of `schem emit zig` for
-the divider. The relevant generated MNA stamps:
+Two committed samples of `schem emit zig`:
 
-```zig
-// R1 (resistor)
-a[0 * SZ + 0] += 0.001;   a[1 * SZ + 1] += 0.001;
-a[0 * SZ + 1] -= 0.001;   a[1 * SZ + 0] -= 0.001;
-// R2 (resistor)
-a[1 * SZ + 1] += 0.0005;
-// branch B (the 9 V source)
-a[0 * SZ + 2] += 1.0;     a[2 * SZ + 0] += 1.0;   z[2] = 9.0;
-```
+- `examples/voltage_divider.zig` — the divider, whose stamps
+  (`stampG(a, 1, 2, 0.001)`, the 9 V source branch) solve to `N1 = 9 V`,
+  `N2 = 6 V`, the same answer the engine computes.
+- `examples/relay_and_gate.zig` — a relay AND gate, emitting the relay
+  metadata arrays and the fixed-point loop, so the generated program closes
+  contacts and settles exactly as a relay machine does.
 
-solving to `N1 = 9.0 V`, `N2 = 6.0 V` — the same divider the engine computes.
+## Verifying without a Zig compiler
+
+There is no Zig toolchain in this environment, so the emitted `.zig` is
+generated and structurally tested but not compiled. Its correctness rests on
+the **shared lowering**: `tests/test_cir.tcl` asserts that `dcref` — which
+runs the identical fixed-point/Newton algorithm over the same `LowerDC`
+mapping — reproduces the engine node-for-node on linear, diode (Newton) and
+relay (fixed-point) circuits, including a full AND-gate truth table. The Zig
+emitter is a transcription of that verified algorithm.
 
 ## Where this is heading
 
 The IR is the foundation for the native backend (the answer to running very
 large grids at full speed) and the natural home for a compiled, fill-reduced
-elimination schedule. The next code-gen layers — Newton (diodes), the
-fixed-point relay loop (with the hysteresis/delay the IR already carries), and
-transient stepping (companion models) — extend the Zig backend without
-changing the IR or the source.
+elimination schedule. The remaining code-gen layer is **transient** stepping
+(companion models over time, the relay propagation delay) — it extends the
+Zig backend without changing the IR or the source. After that: more targets
+(C / WASM / HDL), each a sibling proc over the same IR.
