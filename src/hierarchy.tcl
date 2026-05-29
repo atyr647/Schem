@@ -89,6 +89,7 @@ oo::define ::schem::Schematic {
         dict for {pn term} $cPorts {
             dict set portmap $pn [apply $rename $term $prefix]
         }
+        set NodeDirty 1
         return $portmap
     }
 }

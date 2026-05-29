@@ -19,6 +19,11 @@ oo::define ::schem::Schematic {
     # 0 V branches so their current can be measured (Ohm/Kirchhoff still
     # hold; an ideal conductor just has V = 0 across it).
     method BuildNodes {} {
+        # Continuity depends only on the wiring, which does not change while a
+        # circuit runs (switch/relay STATE is a stamp value, not a topology
+        # change).  So resolve nodes once and reuse until an edit marks them
+        # dirty -- a clocked run never recomputes this.
+        if {!$NodeDirty && [dict size $Node] > 0} return
         # Union-find over every terminal string.
         set parent [dict create]
         foreach t [my AllTerminals] { dict set parent $t $t }
@@ -75,6 +80,7 @@ oo::define ::schem::Schematic {
             dict set Node $t [dict get $idmap $r]
         }
         set NNodes [expr {$next - 1}]
+        set NodeDirty 0
         return
     }
 

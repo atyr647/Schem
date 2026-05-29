@@ -100,6 +100,7 @@ oo::class create ::schem::Schematic {
     variable Faults   ;# list of fault descriptions from last solve
     variable Diode    ;# diode name -> last junction voltage (Newton state)
     variable Energized ;# persistent relay-coil state (enables latch memory)
+    variable NodeDirty ;# 1 when the wiring changed and nodes must be rebuilt
     variable Name
 
     constructor {{name schematic}} {
@@ -111,6 +112,8 @@ oo::class create ::schem::Schematic {
         set Faults {}
         set Diode [dict create]
         set Energized [dict create]
+        set Node [dict create]
+        set NodeDirty 1
     }
 
     method name {} { return $Name }
@@ -149,6 +152,7 @@ oo::class create ::schem::Schematic {
             dict set params $key $v
         }
         dict set Comp $name [dict create type $type params $params attrs $attrs]
+        set NodeDirty 1
         return $name
     }
 
@@ -193,6 +197,7 @@ oo::class create ::schem::Schematic {
         # Coupling tuple: {a b awg harness len}.  Plain wires carry no harness
         # tag; len (metres) is optional and gives a gauged wire real resistance.
         lappend Conns [list $ta $tb $awg {} $len]
+        set NodeDirty 1
         return
     }
 
@@ -216,6 +221,7 @@ oo::class create ::schem::Schematic {
             lappend members [list $a $b]
         }
         dict set Harness $name [dict create layer $layer members $members]
+        set NodeDirty 1
         return $name
     }
 
@@ -288,6 +294,7 @@ oo::class create ::schem::Schematic {
             if {[llength $mem] == 0} { dict unset Harness $hn } \
             else { dict set Harness $hn [dict replace $h members $mem] }
         }
+        set NodeDirty 1
         return
     }
 
