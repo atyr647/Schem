@@ -142,7 +142,7 @@ checks each fundamental rule against a hand-computed value:
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 | **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
-Run them (116 tests total):
+Run them (122 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 44: the electrical laws + device realism
@@ -152,7 +152,7 @@ $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 $ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
 $ tclsh tests/test_catalog.tcl   #  9: register, adder, counter, decoder, selector, accumulator, sequencer, computer
-$ tclsh tests/test_cir.tcl       # 12: circuit IR + Zig/dcref backends (DC: linear, diode, relay)
+$ tclsh tests/test_cir.tcl       # 18: circuit IR + Zig/dcref backends (DC + transient; compiled & run vs the engine)
 ```
 
 ## Examples
@@ -174,6 +174,7 @@ $ tclsh tests/test_cir.tcl       # 12: circuit IR + Zig/dcref backends (DC: line
 | `examples/grid.tcl`                    | panels composed into a grid (the full hierarchy) |
 | `examples/voltage_divider.zig`         | a sample `schem emit zig` DC solver (generated) |
 | `examples/relay_and_gate.zig`          | emitted Zig for a relay gate (fixed-point loop) |
+| `examples/relay_oscillator.zig`        | emitted Zig (transient): a relay oscillator over time |
 
 ## Repository layout
 

@@ -62,18 +62,23 @@ schem::backends                 ;# -> {dcref zig}
 
 Two backends ship today:
 
-- **`zig`** — emits a self-contained Zig program that solves the **full DC
-  operating point** by Modified Nodal Analysis, with the same two loops the
-  engine uses: an **outer fixed-point over relay state** (coil current →
-  pick-up/drop-out → which contact is closed) and an **inner Newton over
-  diodes** (Shockley + Zener, series resistance). It covers every element at
-  its DC behaviour — resistors, batteries with ESR, switches, **relays**,
-  **diodes**, ammeters, gauged wires, fuses/breakers, transformer windings
-  (shorts at DC), inductors (a DC short), capacitors (open). The relay and
-  diode metadata are emitted as Zig arrays and the contact/companion stamps
-  are recomputed each iteration. (Transient — companion stepping over time —
-  is the next layer; the IR already carries `v0`/`i0`/`L`/`C`/`coilL`/`delay`
-  for it.)
+- **`zig`** — emits a self-contained Zig program. Two modes:
+  - **DC** (`schem emit zig FILE`) — the **full DC operating point** by
+    Modified Nodal Analysis, with the engine's two loops: an **outer
+    fixed-point over relay state** (coil current → pick-up/drop-out → which
+    contact is closed) and an **inner Newton over diodes** (Shockley + Zener,
+    series resistance). Covers every element at its DC behaviour — resistors,
+    batteries with ESR, switches, relays, diodes, ammeters, gauged wires,
+    fuses/breakers, transformer windings (shorts at DC), inductors (a DC
+    short), capacitors (open).
+  - **Transient** (`schem emit zig FILE -transient -duration T -dt DT`) — a
+    time-stepping solver with backward-Euler companion models (capacitors
+    with ESR/leakage, inductors and inductive relay coils with winding R),
+    Newton for diodes each step, and relays switching with the one-step lag,
+    propagation delay and hysteresis — exactly the engine's transient
+    analyser. It prints a table of node voltages over time. (Transformers in
+    transient, the `i2t` trip curve and timed `-events` stimulus are the
+    remaining edges; the IR carries their data for when they are added.)
 - **`dcref`** — a reference backend, in Tcl, that solves the DC operating
   point *straight from the IR* (the same lowering the emitters use). It proves
   the IR carries enough to reproduce the solve, and is the oracle the code
@@ -87,30 +92,40 @@ Two backends ship today:
 
 ## Examples
 
-Two committed samples of `schem emit zig`:
+Three committed samples of `schem emit zig`:
 
 - `examples/voltage_divider.zig` — the divider, whose stamps
   (`stampG(a, 1, 2, 0.001)`, the 9 V source branch) solve to `N1 = 9 V`,
   `N2 = 6 V`, the same answer the engine computes.
-- `examples/relay_and_gate.zig` — a relay AND gate, emitting the relay
+- `examples/relay_and_gate.zig` — a relay AND gate (DC), emitting the relay
   metadata arrays and the fixed-point loop, so the generated program closes
   contacts and settles exactly as a relay machine does.
+- `examples/relay_oscillator.zig` — the self-interrupting relay (transient),
+  whose coil node prints `12, 0, 12, 0, …` over time — the same buzz the
+  engine's `run()` produces.
 
-## Verifying without a Zig compiler
+## Verification
 
-There is no Zig toolchain in this environment, so the emitted `.zig` is
-generated and structurally tested but not compiled. Its correctness rests on
-the **shared lowering**: `tests/test_cir.tcl` asserts that `dcref` — which
-runs the identical fixed-point/Newton algorithm over the same `LowerDC`
-mapping — reproduces the engine node-for-node on linear, diode (Newton) and
-relay (fixed-point) circuits, including a full AND-gate truth table. The Zig
-emitter is a transcription of that verified algorithm.
+The emitted Zig is **compiled and run, and diffed against the electrical
+engine**. With a Zig toolchain available (`SCHEM_ZIG=/path/to/zig`, or `zig`
+on `PATH`), `tests/test_cir.tcl` emits the Zig, compiles + runs it, and
+compares node-for-node:
+
+- **DC**: the divider, a diode (Newton) and a relay AND gate (fixed-point).
+- **Transient**: an RC charge, an RL ramp and the relay oscillator —
+  step-for-step against the engine's `run()`.
+
+These were verified against Zig 0.13.0; every case matches to within `1e-3`.
+When no toolchain is present the compile-and-run tests **skip** cleanly, and a
+second layer of defence remains: `dcref`, a Tcl backend that runs the same
+fixed-point/Newton algorithm over the same `LowerDC` mapping, is always
+checked against the engine.
 
 ## Where this is heading
 
-The IR is the foundation for the native backend (the answer to running very
-large grids at full speed) and the natural home for a compiled, fill-reduced
-elimination schedule. The remaining code-gen layer is **transient** stepping
-(companion models over time, the relay propagation delay) — it extends the
-Zig backend without changing the IR or the source. After that: more targets
-(C / WASM / HDL), each a sibling proc over the same IR.
+The IR is the foundation for running very large grids at full speed (compile
+once, run native) and the natural home for a compiled, fill-reduced
+elimination schedule. The remaining transient edges are timed `-events`
+stimulus, the `i2t` trip curve and transformers-in-transient — all
+extensions, no IR or source change. After that: more targets (C / WASM /
+HDL), each a sibling proc over the same IR.

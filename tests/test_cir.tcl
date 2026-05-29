@@ -53,6 +53,36 @@ proc nodesMatch {s} {
     }
     return $ok
 }
+# transient: compile+run the emitted Zig stepper, compare the node-voltage
+# time series to the engine's run() node-for-node, step-for-step.
+proc tranMatch {s dur dt} {
+    set ir [$s compile] ; set N [dict get $ir nodes count]
+    set terms {}   ;# one representative terminal per node, in node-id order
+    for {set nid 1} {$nid <= $N} {incr nid} { lappend terms [lindex [dict get $ir nodes map $nid] 0] }
+    # engine rows
+    set d [$s run -duration $dur -dt $dt -record $terms]
+    set erows {}
+    set nt [llength [dict get $d t]]
+    for {set i 0} {$i < $nt} {incr i} {
+        set row {} ; foreach t $terms { lappend row [lindex [dict get $d $t] $i] }
+        lappend erows $row
+    }
+    # zig rows
+    set f [file join [tcltest::temporaryDirectory] zt[pid].zig]
+    set fh [open $f w] ; puts $fh [schem::emit $s zig -transient -duration $dur -dt $dt] ; close $fh
+    set out [exec {*}[zigExe] run $f] ; file delete $f
+    set zrows {}
+    foreach line [split $out \n] {
+        if {[regexp {^[0-9]} $line]} { lappend zrows [lrange $line 1 end] }
+    }
+    if {[llength $zrows] != [llength $erows]} { return "rowcount z=[llength $zrows] e=[llength $erows]" }
+    for {set i 0} {$i < [llength $erows]} {incr i} {
+        foreach ev [lindex $erows $i] zv [lindex $zrows $i] {
+            if {abs($ev - $zv) > 1e-3} { return "step $i: e=$ev z=$zv" }
+        }
+    }
+    return ok
+}
 
 # ---- the IR classifies elements by electrical role -----------------------
 
@@ -245,5 +275,25 @@ test zig-run-relay {emitted Zig (fixed-point) reproduces a relay AND gate} -cons
     $s add switch SB ; $s wire VCC.pos SB.a ; $s wire SB.b [dict get $g B]
     $s close SA ; $s close SB
 } -body { nodesMatch $s } -cleanup {$s destroy} -result 1
+
+# ---- compiled Zig transient reproduces the engine's run() ----------------
+
+test zig-tran-rc {emitted Zig transient matches the engine on an RC charge} -constraints zig -setup {
+    set s [schem::new rc]
+    $s add battery B -emf 10 ; $s add ground GND ; $s add resistor R -r 100 ; $s add capacitor C -c 1e-3
+    $s wire B.pos R.a ; $s wire R.b C.a ; $s wire C.b GND.t ; $s wire B.neg GND.t
+} -body { tranMatch $s 0.5 0.05 } -cleanup {$s destroy} -result ok
+
+test zig-tran-rl {emitted Zig transient matches the engine on an RL ramp} -constraints zig -setup {
+    set s [schem::new rl]
+    $s add battery B -emf 12 ; $s add ground GND ; $s add resistor R -r 10 ; $s add inductor L -l 0.1
+    $s wire B.pos R.a ; $s wire R.b L.a ; $s wire L.b GND.t ; $s wire B.neg GND.t
+} -body { tranMatch $s 0.05 0.005 } -cleanup {$s destroy} -result ok
+
+test zig-tran-oscillator {emitted Zig transient matches the engine's relay oscillator} -constraints zig -setup {
+    set s [schem::new osc]
+    $s add battery B -emf 12 ; $s add ground GND ; $s add relay K -coil 100 -pickup 0.05
+    $s wire B.pos K.com ; $s wire K.nc K.c1 ; $s wire K.c2 GND.t ; $s wire B.neg GND.t
+} -body { tranMatch $s 0.012 0.001 } -cleanup {$s destroy} -result ok
 
 cleanupTests

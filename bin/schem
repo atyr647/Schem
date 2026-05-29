@@ -30,7 +30,7 @@ proc usage {} {
     puts stderr "       schem validate FILE.schem"
     puts stderr "       schem netlist FILE.schem"
     puts stderr "       schem ir      FILE.schem            (the Circuit IR)"
-    puts stderr "       schem emit    TARGET FILE.schem     (TARGET: zig, ...)"
+    puts stderr "       schem emit    TARGET FILE.schem ?opts?   (TARGET: zig; opts: -transient -duration T -dt DT)"
     exit 2
 }
 
@@ -137,9 +137,9 @@ switch -- $cmd {
     }
 
     emit {
-        if {[llength $rest] != 2} { usage }
+        if {[llength $rest] < 2} { usage }
         set s [schem::load [lindex $rest 1]]
-        puts [schem::emit $s [lindex $rest 0]]
+        puts [schem::emit $s [lindex $rest 0] {*}[lrange $rest 2 end]]
         exit 0
     }
 
