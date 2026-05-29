@@ -22,6 +22,38 @@ proc elem {cir name} {
     return ""
 }
 
+# --- compile-and-run verification (only when a Zig toolchain is present) ---
+# Set SCHEM_ZIG to the zig binary, or have `zig` on PATH; otherwise these are
+# skipped.  They emit the backend's Zig, compile + run it, and compare the
+# node voltages to the electrical engine.
+proc zigExe {} {
+    if {[info exists ::env(SCHEM_ZIG)] && [file executable $::env(SCHEM_ZIG)]} {
+        return $::env(SCHEM_ZIG)
+    }
+    set p [auto_execok zig] ; return [expr {$p ne "" ? $p : ""}]
+}
+testConstraint zig [expr {[zigExe] ne ""}]
+proc zigNodes {s} {
+    set f [file join [tcltest::temporaryDirectory] z[pid].zig]
+    set fh [open $f w] ; puts $fh [schem::emit $s zig] ; close $fh
+    set out [exec {*}[zigExe] run $f]
+    file delete $f
+    set v [dict create]
+    foreach line [split $out \n] {
+        if {[regexp {N(\d+) = (-?[0-9.]+) V} $line -> nid val]} { dict set v $nid $val }
+    }
+    return $v
+}
+proc nodesMatch {s} {
+    $s solve
+    set z [zigNodes $s] ; set ir [$s compile] ; set ok 1
+    dict for {nid terms} [dict get $ir nodes map] {
+        if {$nid == 0} continue
+        if {abs([$s probe [lindex $terms 0]] - [dict get $z $nid]) > 1e-3} { set ok 0 }
+    }
+    return $ok
+}
+
 # ---- the IR classifies elements by electrical role -----------------------
 
 test cir-roles {each element is lowered to its electrical role + derived values} -setup {
@@ -146,7 +178,7 @@ test zig-emits-relay {a relay emits the contact arrays + fixed-point loop} -setu
 } -body {
     list [expr {[has $z "const NR: usize = 0;"] ? 0 : 1}] \
          [has $z "var energized"] \
-         [has $z "stampG(&a, r_com\[r\], r_no\[r\], 1.0 / RSMALL)"] \
+         [has $z "stampG(a, r_com\[r\], r_no\[r\], 1.0 / RSMALL)"] \
          [has $z "if (!changed) break;"]
 } -cleanup {$s destroy} -result {1 1 1 1}
 
@@ -189,5 +221,29 @@ test dcref-relay-truthtable {dcref reproduces a relay AND gate's truth table fro
 test backends-registered {the backend registry lists available targets} -body {
     expr {"zig" in [schem::backends] && "dcref" in [schem::backends]}
 } -result 1
+
+# ---- compiled Zig reproduces the engine (when a toolchain is available) ---
+
+test zig-run-divider {emitted Zig compiles and solves the divider} -constraints zig -setup {
+    set s [schem::new d]
+    $s add battery B -emf 9 ; $s add ground GND ; $s add resistor R1 -r 1000 ; $s add resistor R2 -r 2000
+    $s wire B.pos R1.a ; $s wire R1.b R2.a ; $s wire R2.b GND.t ; $s wire B.neg GND.t
+} -body { nodesMatch $s } -cleanup {$s destroy} -result 1
+
+test zig-run-diode {emitted Zig (Newton) reproduces a diode drop} -constraints zig -setup {
+    set s [schem::new di]
+    $s add battery B -emf 5 ; $s add ground GND ; $s add diode D ; $s add resistor R -r 1000
+    $s wire B.pos D.a ; $s wire D.k R.a ; $s wire R.b GND.t ; $s wire B.neg GND.t
+} -body { nodesMatch $s } -cleanup {$s destroy} -result 1
+
+test zig-run-relay {emitted Zig (fixed-point) reproduces a relay AND gate} -constraints zig -setup {
+    set s [schem::new andg]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    set g [$s instantiate [schem::lib::and_gate] U]
+    $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+    $s add switch SA ; $s wire VCC.pos SA.a ; $s wire SA.b [dict get $g A]
+    $s add switch SB ; $s wire VCC.pos SB.a ; $s wire SB.b [dict get $g B]
+    $s close SA ; $s close SB
+} -body { nodesMatch $s } -cleanup {$s destroy} -result 1
 
 cleanupTests

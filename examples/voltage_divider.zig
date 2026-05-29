@@ -48,12 +48,9 @@ fn solve(a: []f64, z: []f64, n: usize) void {
         while (c < n) : (c += 1) { s -= a[ii*n+c] * z[c]; } z[ii] = s / a[ii*n+ii]; }
 }
 
-var a: [SZ * SZ]f64 = undefined;
-var z: [SZ]f64 = undefined;
-
-fn assemble() void {
-    for (&a) |*x| x.* = 0;
-    for (&z) |*x| x.* = 0;
+fn assemble(a: []f64, z: []f64) void {
+    for (a) |*x| x.* = 0;
+    for (z) |*x| x.* = 0;
     { var i: usize = 0; while (i < N) : (i += 1) a[i*SZ+i] += 1e-12; }
     // base conductances (resistors, coils, closed switches, wires)
     stampG(a, 1, 2, 0.001); // R1
@@ -64,12 +61,14 @@ fn assemble() void {
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
+    var a = [_]f64{0} ** (SZ * SZ);
+    var z = [_]f64{0} ** SZ;
     var outer: usize = 0;
     while (outer < 200) : (outer += 1) {
         var newton: usize = 0;
         while (newton < 100) : (newton += 1) {
-            assemble();
-            solve(&a, &z, SZ);
+            assemble(a[0..], z[0..]);
+            solve(a[0..], z[0..], SZ);
             break;
         }
         break;

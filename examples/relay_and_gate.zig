@@ -57,12 +57,9 @@ fn solve(a: []f64, z: []f64, n: usize) void {
         while (c < n) : (c += 1) { s -= a[ii*n+c] * z[c]; } z[ii] = s / a[ii*n+ii]; }
 }
 
-var a: [SZ * SZ]f64 = undefined;
-var z: [SZ]f64 = undefined;
-
-fn assemble() void {
-    for (&a) |*x| x.* = 0;
-    for (&z) |*x| x.* = 0;
+fn assemble(a: []f64, z: []f64) void {
+    for (a) |*x| x.* = 0;
+    for (z) |*x| x.* = 0;
     { var i: usize = 0; while (i < N) : (i += 1) a[i*SZ+i] += 1e-12; }
     // base conductances (resistors, coils, closed switches, wires)
     stampG(a, 1, 3, 1000.0); // A
@@ -74,25 +71,27 @@ fn assemble() void {
     stampBranch(a, z, 8, 1, 0, 9.0, 0.0); // BC
     stampBranch(a, z, 9, 2, 0, 12.0, 0.0); // BL
     { var r: usize = 0; while (r < NR) : (r += 1) {
-        if (energized[r]) stampG(&a, r_com[r], r_no[r], 1.0 / RSMALL)
-        else stampG(&a, r_com[r], r_nc[r], 1.0 / RSMALL);
+        if (energized[r]) stampG(a, r_com[r], r_no[r], 1.0 / RSMALL)
+        else stampG(a, r_com[r], r_nc[r], 1.0 / RSMALL);
     } }
 }
 
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
+    var a = [_]f64{0} ** (SZ * SZ);
+    var z = [_]f64{0} ** SZ;
     var outer: usize = 0;
     while (outer < 200) : (outer += 1) {
         var newton: usize = 0;
         while (newton < 100) : (newton += 1) {
-            assemble();
-            solve(&a, &z, SZ);
+            assemble(a[0..], z[0..]);
+            solve(a[0..], z[0..], SZ);
             break;
         }
         var changed = false;
         var r: usize = 0;
         while (r < NR) : (r += 1) {
-            const ic = @abs(nv(&z, r_c1[r]) - nv(&z, r_c2[r])) / r_rc[r];
+            const ic = @abs(nv(z[0..], r_c1[r]) - nv(z[0..], r_c2[r])) / r_rc[r];
             const was = energized[r];
             const now = if (was) (ic >= r_do[r]) else (ic >= r_pu[r]);
             if (now != was) { energized[r] = now; changed = true; }
