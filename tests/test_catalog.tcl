@@ -154,4 +154,42 @@ test accumulator {Q := Q + IN on each clock} -body {
     set seq
 } -result {0 1 2 3 4 7 10}
 
+# ---- integration: a controlled multiplier that computes and HALTS --------
+# Datapath = a 3-bit accumulator; control = a 2-bit step counter + a seal-in
+# halt latch that gates the operand off once the count reaches 3.  Proves
+# control + datapath + state cooperating: it computes operand x 3, then stops.
+
+test computing-panel {a controlled accumulator multiplies then halts} -body {
+    set p [schem::panel m]
+    $p add battery VCC -emf 12 ; $p add ground GND ; $p wire VCC.neg GND.t
+    set acc [$p instantiate [schem::lib::accumulator AC 3] ACC]
+    set cnt [$p instantiate [schem::lib::counter CT 2] CNT]
+    set hd  [$p instantiate [schem::lib::and_gate] HD]
+    foreach m [list $acc $cnt $hd] { $p wire [dict get $m VCC] VCC.pos ; $p wire [dict get $m GND] GND.t }
+    $p add switch SCLK ; $p wire VCC.pos SCLK.a
+    $p wire SCLK.b [dict get $acc CLK] ; $p wire SCLK.b [dict get $cnt CLK]
+    $p wire [dict get $cnt Q0] [dict get $hd A] ; $p wire [dict get $cnt Q1] [dict get $hd B]
+    $p add relay KS -coil 100 -pickup 0.01
+    $p wire [dict get $hd OUT] KS.c1 ; $p wire KS.c2 GND.t
+    $p add relay HL -coil 100 -pickup 0.01
+    $p wire VCC.pos KS.com ; $p wire VCC.pos HL.com
+    $p wire KS.no HL.c1 ; $p wire HL.no HL.c1 ; $p wire HL.c2 GND.t
+    $p add resistor RPD -r 10000 ; $p wire HL.nc RPD.a ; $p wire RPD.b GND.t
+    for {set i 0} {$i < 3} {incr i} {
+        set ag [$p instantiate [schem::lib::and_gate] G$i]
+        $p wire [dict get $ag VCC] VCC.pos ; $p wire [dict get $ag GND] GND.t
+        $p add switch OP$i ; $p wire VCC.pos OP$i.a ; $p wire OP$i.b [dict get $ag A]
+        $p wire HL.nc [dict get $ag B]
+        $p wire [dict get $ag OUT] [dict get $acc IN$i]
+    }
+    proc total {p acc} { set v 0 ; for {set i 0} {$i<3} {incr i} { if {[$p probe [dict get $acc Q$i]] > 6} {set v [expr {$v|(1<<$i)}]} } ; return $v }
+    proc tick {p} { $p open SCLK ; $p solve ; $p close SCLK ; $p solve }
+    $p close OP1   ;# operand = 2
+    $p open SCLK ; $p solve
+    set seq [total $p $acc]
+    for {set k 0} {$k < 4} {incr k} { tick $p ; lappend seq [total $p $acc] }
+    $p destroy
+    set seq            ;# 0, then 2,4,6, then frozen at 6 (2 x 3, halted)
+} -result {0 2 4 6 6}
+
 cleanupTests

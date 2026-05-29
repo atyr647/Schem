@@ -141,7 +141,7 @@ checks each fundamental rule against a hand-computed value:
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 | **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
-Run them (100 tests total):
+Run them (103 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 44: the electrical laws + device realism
@@ -150,7 +150,7 @@ $ tclsh tests/test_tools.tcl     # 17: validator + interactive editor
 $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 $ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
-$ tclsh tests/test_catalog.tcl   #  5: register, adder, counter, decoder, selector
+$ tclsh tests/test_catalog.tcl   #  8: register, adder, counter, decoder, selector, accumulator, sequencer, computer
 ```
 
 ## Examples
