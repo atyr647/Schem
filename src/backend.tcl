@@ -1457,6 +1457,11 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
         lappend S "            if (en != energized\[r\]) { energized\[r\] = en; changed = true; }"
         lappend S "        } }"
     }
+    # A clocked write must sample the *settled* address/data: defer it until the
+    # relays are stable this pass (buffers already settle inside reach()), so a
+    # bus-driven address/data is not latched at its pre-settled value -- the same
+    # gate the engine's solve and digseq apply.  Emitted only when memory exists.
+    if {[llength $mems]} { lappend S "        const relays_stable = !changed;" }
     # per-memory read/write inside the fixed point (digseq's UpdateMemory)
     set mi 0
     foreach e $mems {
