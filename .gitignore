@@ -1,0 +1,11 @@
+# Temp artifacts from the test harness (tests/test_cir.tcl emits Zig to compile
+# and run it).  These are build-time scratch, never source -- the committed Zig
+# samples live under examples/.
+z*[0-9].zig
+zd*[0-9].zig
+zs*[0-9].zig
+zt*[0-9].zig
+*.orig
+
+# Local Zig toolchain unpacked into the repo, if any.
+zig-linux-*/
