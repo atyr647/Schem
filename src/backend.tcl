@@ -48,7 +48,7 @@ proc ::schem::backends {} {
 # state-controlled conductances; diodes are nonlinear.  Capacitors are open at
 # DC and drop out.  Nothing is refused -- every part has a DC lowering.
 proc ::schem::backend::LowerDC {cir} {
-    set conds {} ; set branches {} ; set relays {} ; set diodes {} ; set mosfets {} ; set protect {} ; set buffers {}
+    set conds {} ; set branches {} ; set relays {} ; set diodes {} ; set mosfets {} ; set bjts {} ; set protect {} ; set buffers {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -78,8 +78,13 @@ proc ::schem::backend::LowerDC {cir} {
             }
             transistor {
                 set m [dict get $e model]
-                lappend mosfets [list [dict get $nd g] [dict get $nd d] [dict get $nd s] \
-                    [dict get $m vto] [dict get $m kp] [dict get $m lambda] [dict get $m pmos] $nm]
+                if {[dict get $e type] eq "bjt"} {
+                    lappend bjts [list [dict get $nd b] [dict get $nd c] [dict get $nd e] \
+                        [dict get $m is] [dict get $m beta] [dict get $m n] [dict get $m vaf] [dict get $m pnp] $nm]
+                } else {
+                    lappend mosfets [list [dict get $nd g] [dict get $nd d] [dict get $nd s] \
+                        [dict get $m vto] [dict get $m kp] [dict get $m lambda] [dict get $m pmos] $nm]
+                }
             }
             reactive {
                 if {[dict get $e type] eq "inductor"} {
@@ -146,7 +151,7 @@ proc ::schem::backend::LowerDC {cir} {
     }
     set n [dict get $cir nodes count]
     return [dict create n $n sz [expr {$n + [llength $branches]}] \
-        conds $conds branches $branches relays $relays diodes $diodes mosfets $mosfets protect $protect buffers $buffers]
+        conds $conds branches $branches relays $relays diodes $diodes mosfets $mosfets bjts $bjts protect $protect buffers $buffers]
 }
 
 # DiodeGI -- junction current Id and small-signal conductance gj at junction
@@ -196,6 +201,24 @@ proc ::schem::backend::MosfetGI {vgs vds vto kp lambda pmos} {
     return [list $Id $gm $gds]
 }
 
+# BjtGI -- BJT Ebers-Moll: collector current Ic (C→E convention), base
+# current Ib, transconductance gm, base-emitter conductance gbe, and
+# Early-effect collector-emitter conductance gce, at (vbe, vce).
+# pnp non-zero: negate voltages internally, negate returned Ic and Ib.
+proc ::schem::backend::BjtGI {vbe vce is beta nf vaf pnp} {
+    if {$pnp} { set vbe [expr {-$vbe}] ; set vce [expr {-$vce}] }
+    set Vt [expr {0.025852 * $nf}]
+    set ef [expr {exp(min($vbe/$Vt, 80.0))}]
+    set early [expr {$vaf > 0 ? max(0.01, 1.0 + $vce/$vaf) : 1.0}]
+    set Ic  [expr {$is * ($ef - 1.0) * $early}]
+    set gm  [expr {max($is * $ef / $Vt * $early, 1e-12)}]
+    set gce [expr {$vaf > 0 ? max($is * ($ef - 1.0) / $vaf, 1e-12) : 1e-12}]
+    set Ib  [expr {$Ic / $beta}]
+    set gbe [expr {max($gm / $beta, 1e-12)}]
+    if {$pnp} { set Ic [expr {-$Ic}] ; set Ib [expr {-$Ib}] }
+    return [list $Ic $Ib $gm $gbe $gce]
+}
+
 # ====================================================================
 #  dcref -- reference DC backend (in Tcl) that solves straight from the IR.
 # ====================================================================
@@ -212,6 +235,7 @@ proc ::schem::backend::dcref {cir} {
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
     set mosfets [dict get $L mosfets]
+    set bjts    [dict get $L bjts]
     set protect [dict get $L protect] ; set buffers [dict get $L buffers]
     set gc [expr {1.0/$RSMALL}]
     set b2buf [dict create]   ;# branch index -> {in oe vhigh rout} for tri-state buffers
@@ -221,6 +245,8 @@ proc ::schem::backend::dcref {cir} {
     set diodeV    [lrepeat [llength $diodes] 0.0]
     set mosfetVgs [lrepeat [llength $mosfets] 0.0]
     set mosfetVds [lrepeat [llength $mosfets] 0.0]
+    set bjtVbe    [lrepeat [llength $bjts] 0.0]
+    set bjtVce    [lrepeat [llength $bjts] 0.0]
     set fbopen    [dict create]   ;# protective branch index -> 1 once tripped
     set bufdrv    [dict create]   ;# buffer branch index -> driven voltage (absent = Hi-Z)
     set x {}
@@ -260,6 +286,26 @@ proc ::schem::backend::dcref {cir} {
                 }
                 if {$nd != 0} { lset z [expr {$nd-1}] [expr {[lindex $z [expr {$nd-1}]] - $Ieq}] }
                 if {$ns != 0} { lset z [expr {$ns-1}] [expr {[lindex $z [expr {$ns-1}]] + $Ieq}] }
+            }
+            for {set bi 0} {$bi < [llength $bjts]} {incr bi} {
+                lassign [lindex $bjts $bi] nb nc ne is beta nf vaf pnp nm
+                lassign [BjtGI [lindex $bjtVbe $bi] [lindex $bjtVce $bi] $is $beta $nf $vaf $pnp] Ic Ib gm gbe gce
+                set vbe0 [lindex $bjtVbe $bi] ; set vce0 [lindex $bjtVce $bi]
+                # B-E conductance + Norton current (base-emitter junction)
+                StampG A $nb $ne $gbe
+                set Ibeq [expr {$Ib - $gbe*$vbe0}]
+                if {$nb != 0} { lset z [expr {$nb-1}] [expr {[lindex $z [expr {$nb-1}]] - $Ibeq}] }
+                if {$ne != 0} { lset z [expr {$ne-1}] [expr {[lindex $z [expr {$ne-1}]] + $Ibeq}] }
+                # VCCS: gm*(Vb - Ve) from C to E, plus C-E conductance gce
+                foreach {row col s} [list $nc $nb 1 $nc $ne -1 $ne $nb -1 $ne $ne 1] {
+                    if {$row != 0 && $col != 0} {
+                        ::schem::la::spacc A [expr {$row-1}] [expr {$col-1}] [expr {$s*$gm}]
+                    }
+                }
+                StampG A $nc $ne $gce
+                set Iceq [expr {$Ic - $gm*$vbe0 - $gce*$vce0}]
+                if {$nc != 0} { lset z [expr {$nc-1}] [expr {[lindex $z [expr {$nc-1}]] - $Iceq}] }
+                if {$ne != 0} { lset z [expr {$ne-1}] [expr {[lindex $z [expr {$ne-1}]] + $Iceq}] }
             }
             set k 0
             foreach br $branches {
@@ -311,6 +357,19 @@ proc ::schem::backend::dcref {cir} {
                 set dv [expr {max(abs($vgs-$vgs0), abs($vds-$vds0))}]
                 if {$dv > $maxd} { set maxd $dv }
                 lset mosfetVgs $mi $vgs ; lset mosfetVds $mi $vds
+            }
+            for {set bi 0} {$bi < [llength $bjts]} {incr bi} {
+                lassign [lindex $bjts $bi] nb nc ne is beta nf vaf pnp nm
+                set vbe [expr {[Nv $x $nb] - [Nv $x $ne]}]
+                set vce [expr {[Nv $x $nc] - [Nv $x $ne]}]
+                set vbe0 [lindex $bjtVbe $bi] ; set vce0 [lindex $bjtVce $bi]
+                if {$vbe - $vbe0 >  0.5} { set vbe [expr {$vbe0 + 0.5}] }
+                if {$vbe0 - $vbe >  0.5} { set vbe [expr {$vbe0 - 0.5}] }
+                if {$vce - $vce0 >  0.5} { set vce [expr {$vce0 + 0.5}] }
+                if {$vce0 - $vce >  0.5} { set vce [expr {$vce0 - 0.5}] }
+                set dv [expr {max(abs($vbe-$vbe0), abs($vce-$vce0))}]
+                if {$dv > $maxd} { set maxd $dv }
+                lset bjtVbe $bi $vbe ; lset bjtVce $bi $vce
             }
             if {$maxd < 1e-9} break
         }
@@ -400,9 +459,9 @@ proc ::schem::backend::zig {cir args} {
     set N [dict get $L n] ; set SZ [dict get $L sz]
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
-    set mosfets [dict get $L mosfets]
+    set mosfets [dict get $L mosfets] ; set bjts [dict get $L bjts]
     set protect [dict get $L protect]
-    set NR [llength $relays] ; set ND [llength $diodes] ; set NM [llength $mosfets] ; set NP [llength $protect]
+    set NR [llength $relays] ; set ND [llength $diodes] ; set NM [llength $mosfets] ; set NB [llength $bjts] ; set NP [llength $protect]
     set name [dict get $cir name]
     # map branch index -> protective index (which branches can blow/trip)
     set b2p [dict create] ; set pj 0
@@ -430,6 +489,13 @@ proc ::schem::backend::zig {cir args} {
         lappend m_g $ng ; lappend m_d $nd ; lappend m_s $ns
         lappend m_vto [Zf $vto] ; lappend m_kp [Zf $kp] ; lappend m_lambda [Zf $lambda]
         lappend m_pmos [expr {$pmos ? "true" : "false"}]
+    }
+    set b_b {} ; set b_c {} ; set b_e {} ; set b_is {} ; set b_beta {} ; set b_n {} ; set b_vaf {} ; set b_pnp {}
+    foreach b $bjts {
+        lassign $b nb nc ne is beta nf vaf pnp nm
+        lappend b_b $nb ; lappend b_c $nc ; lappend b_e $ne
+        lappend b_is [Zf $is] ; lappend b_beta [Zf $beta] ; lappend b_n [Zf $nf]
+        lappend b_vaf [Zf $vaf] ; lappend b_pnp [expr {$pnp ? "true" : "false"}]
     }
 
     # --- assemble() body: base conductances + branches (straight-line) ---
@@ -464,7 +530,7 @@ proc ::schem::backend::zig {cir args} {
     set S {}
     lappend S "// Generated by Schem -- DC operating point of \"$name\""
     lappend S "// Derived from the Circuit IR; the .schem schematic is the source."
-    lappend S "// $N node(s), $NR relay(s), $ND diode(s), $NM mosfet(s); SZ=$SZ unknowns.  Build: zig run this.zig"
+    lappend S "// $N node(s), $NR relay(s), $ND diode(s), $NM mosfet(s), $NB bjt(s); SZ=$SZ unknowns.  Build: zig run this.zig"
     lappend S "const std = @import(\"std\");"
     lappend S ""
     lappend S "const N: usize = $N;"
@@ -472,6 +538,7 @@ proc ::schem::backend::zig {cir args} {
     lappend S "const NR: usize = $NR;"
     lappend S "const ND: usize = $ND;"
     lappend S "const NM: usize = $NM;"
+    lappend S "const NB: usize = $NB;"
     lappend S "const NP: usize = $NP;"
     lappend S "const RSMALL: f64 = [Zf $RSMALL];"
     lappend S ""
@@ -512,6 +579,18 @@ proc ::schem::backend::zig {cir args} {
         lappend S "const m_pmos = [Zarr bool $m_pmos];"
         lappend S "var mosfetVgs = \[_\]f64{0} ** NM;"
         lappend S "var mosfetVds = \[_\]f64{0} ** NM;"
+    }
+    if {$NB} {
+        lappend S "const b_b = [Zarr usize $b_b];"
+        lappend S "const b_c = [Zarr usize $b_c];"
+        lappend S "const b_e = [Zarr usize $b_e];"
+        lappend S "const b_is = [Zarr f64 $b_is];"
+        lappend S "const b_beta = [Zarr f64 $b_beta];"
+        lappend S "const b_n = [Zarr f64 $b_n];"
+        lappend S "const b_vaf = [Zarr f64 $b_vaf];"
+        lappend S "const b_pnp = [Zarr bool $b_pnp];"
+        lappend S "var bjtVbe = \[_\]f64{0} ** NB;"
+        lappend S "var bjtVce = \[_\]f64{0} ** NB;"
     }
     lappend S ""
     lappend S "fn nv(z: \[\]const f64, nid: usize) f64 { return if (nid == 0) 0.0 else z\[nid - 1\]; }"
@@ -569,6 +648,23 @@ proc ::schem::backend::zig {cir args} {
         lappend S "    if (gds < 1e-12) gds = 1e-12;"
         lappend S "    const id_out = if (m_pmos\[m\]) -id else id;"
         lappend S "    return .{ .id = id_out, .gm = gm, .gds = gds };"
+        lappend S "}"
+    }
+    if {$NB} {
+        lappend S "const BG = struct { ic: f64, ib: f64, gm: f64, gbe: f64, gce: f64 };"
+        lappend S "fn bjtComp(b: usize, vbe_in: f64, vce_in: f64) BG {"
+        lappend S "    var vbe = if (b_pnp\[b\]) -vbe_in else vbe_in;"
+        lappend S "    var vce = if (b_pnp\[b\]) -vce_in else vce_in;"
+        lappend S "    const Vt = 0.025852 * b_n\[b\];"
+        lappend S "    const ef = @exp(@min(vbe / Vt, 80.0));"
+        lappend S "    const early = if (b_vaf\[b\] > 0) @max(0.01, 1.0 + vce / b_vaf\[b\]) else 1.0;"
+        lappend S "    var ic = b_is\[b\] * (ef - 1.0) * early;"
+        lappend S "    var gm = @max(b_is\[b\] * ef / Vt * early, 1e-12);"
+        lappend S "    var gce: f64 = if (b_vaf\[b\] > 0) @max(b_is\[b\] * (ef - 1.0) / b_vaf\[b\], 1e-12) else 1e-12;"
+        lappend S "    var ib = ic / b_beta\[b\];"
+        lappend S "    var gbe = @max(gm / b_beta\[b\], 1e-12);"
+        lappend S "    if (b_pnp\[b\]) { ic = -ic; ib = -ib; }"
+        lappend S "    return .{ .ic = ic, .ib = ib, .gm = gm, .gbe = gbe, .gce = gce };"
         lappend S "}"
     }
     lappend S ""
@@ -630,6 +726,26 @@ proc ::schem::backend::zig {cir args} {
         lappend S "        if (m_s\[m\] != 0) z\[m_s\[m\]-1\] += ieq;"
         lappend S "    } }"
     }
+    if {$NB} {
+        lappend S "    { var b: usize = 0; while (b < NB) : (b += 1) {"
+        lappend S "        const c = bjtComp(b, bjtVbe\[b\], bjtVce\[b\]);"
+        lappend S "        // B-E conductance + Norton current"
+        lappend S "        stampG(a, b_b\[b\], b_e\[b\], c.gbe);"
+        lappend S "        const ibeq = c.ib - c.gbe*bjtVbe\[b\];"
+        lappend S "        if (b_b\[b\] != 0) z\[b_b\[b\]-1\] -= ibeq;"
+        lappend S "        if (b_e\[b\] != 0) z\[b_e\[b\]-1\] += ibeq;"
+        lappend S "        // VCCS: gm*(Vb - Ve) from C to E"
+        lappend S "        if (b_c\[b\] != 0 and b_b\[b\] != 0) a\[(b_c\[b\]-1)*SZ+(b_b\[b\]-1)\] += c.gm;"
+        lappend S "        if (b_c\[b\] != 0 and b_e\[b\] != 0) a\[(b_c\[b\]-1)*SZ+(b_e\[b\]-1)\] -= c.gm;"
+        lappend S "        if (b_e\[b\] != 0 and b_b\[b\] != 0) a\[(b_e\[b\]-1)*SZ+(b_b\[b\]-1)\] -= c.gm;"
+        lappend S "        if (b_e\[b\] != 0 and b_e\[b\] != 0) a\[(b_e\[b\]-1)*SZ+(b_e\[b\]-1)\] += c.gm;"
+        lappend S "        // C-E conductance + Norton current"
+        lappend S "        stampG(a, b_c\[b\], b_e\[b\], c.gce);"
+        lappend S "        const iceq = c.ic - c.gm*bjtVbe\[b\] - c.gce*bjtVce\[b\];"
+        lappend S "        if (b_c\[b\] != 0) z\[b_c\[b\]-1\] -= iceq;"
+        lappend S "        if (b_e\[b\] != 0) z\[b_e\[b\]-1\] += iceq;"
+        lappend S "    } }"
+    }
     lappend S "}"
     lappend S ""
     lappend S "pub fn main() !void {"
@@ -642,7 +758,7 @@ proc ::schem::backend::zig {cir args} {
     lappend S "        while (newton < 100) : (newton += 1) {"
     lappend S "            assemble(a\[0..\], z\[0..\]);"
     lappend S "            solve(a\[0..\], z\[0..\], SZ);"
-    if {$ND || $NM} {
+    if {$ND || $NM || $NB} {
         lappend S "            var maxd: f64 = 0;"
         if {$ND} {
             lappend S "            var d: usize = 0;"
@@ -668,6 +784,20 @@ proc ::schem::backend::zig {cir args} {
             lappend S "                const dv = @max(@abs(vgs-mosfetVgs\[m\]), @abs(vds-mosfetVds\[m\]));"
             lappend S "                if (dv > maxd) maxd = dv;"
             lappend S "                mosfetVgs\[m\] = vgs; mosfetVds\[m\] = vds;"
+            lappend S "            }"
+        }
+        if {$NB} {
+            lappend S "            var b: usize = 0;"
+            lappend S "            while (b < NB) : (b += 1) {"
+            lappend S "                var vbe = nv(z\[0..\], b_b\[b\]) - nv(z\[0..\], b_e\[b\]);"
+            lappend S "                var vce = nv(z\[0..\], b_c\[b\]) - nv(z\[0..\], b_e\[b\]);"
+            lappend S "                if (vbe - bjtVbe\[b\] >  0.5) vbe = bjtVbe\[b\] + 0.5;"
+            lappend S "                if (bjtVbe\[b\] - vbe >  0.5) vbe = bjtVbe\[b\] - 0.5;"
+            lappend S "                if (vce - bjtVce\[b\] >  0.5) vce = bjtVce\[b\] + 0.5;"
+            lappend S "                if (bjtVce\[b\] - vce >  0.5) vce = bjtVce\[b\] - 0.5;"
+            lappend S "                const dv = @max(@abs(vbe-bjtVbe\[b\]), @abs(vce-bjtVce\[b\]));"
+            lappend S "                if (dv > maxd) maxd = dv;"
+            lappend S "                bjtVbe\[b\] = vbe; bjtVce\[b\] = vce;"
             lappend S "            }"
         }
         lappend S "            if (maxd < 1e-9) break;"
