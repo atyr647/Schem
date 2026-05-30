@@ -400,6 +400,26 @@ oo::define ::schem::Schematic {
             apply $stampI $nd $ns [expr {$Id - $gm*$vgs0 - $gds*$vds0}]
         }
 
+        # --- BJTs (nonlinear, linearised at operating point vbe0/vce0) ---
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] ne "bjt"} continue
+            set op [expr {[dict exists $state bjtOP $name] ? \
+                [dict get $state bjtOP $name] : {0.0 0.0}}]
+            lassign $op vbe0 vce0
+            lassign [my BjtGI $name $vbe0 $vce0] Ic Ib gm gbe gce
+            set nb [my NodeOf $name.b]
+            set nc [my NodeOf $name.c]
+            set ne [my NodeOf $name.e]
+            # gbe: base-emitter conductance (drives base current)
+            apply $stampG $nb $ne $gbe
+            apply $stampI $nb $ne [expr {$Ib - $gbe*$vbe0}]
+            # VCCS: gm*(Vb - Ve) drives collector current from C to E
+            apply $stampVCCS $nc $ne $nb $ne $gm
+            # gce: Early-effect collector-emitter conductance
+            apply $stampG $nc $ne $gce
+            apply $stampI $nc $ne [expr {$Ic - $gm*$vbe0 - $gce*$vce0}]
+        }
+
         # --- branches (voltage sources / ideal conductors) ---
         for {set k 0} {$k < $B} {incr k} {
             set b [lindex $branches $k]
@@ -493,6 +513,27 @@ oo::define ::schem::Schematic {
                 dict set mosfetOP $name [list $vgs $vds]
             }
             dict set state mosfetOP $mosfetOP
+
+            # Update BJT operating points (vbe, vce) with damping.
+            set bjtOP [expr {[dict exists $state bjtOP] ? \
+                [dict get $state bjtOP] : [dict create]}]
+            dict for {name comp} $Comp {
+                if {[dict get $comp type] ne "bjt"} continue
+                set ne [my NodeOf $name.e]
+                set vbe [expr {[apply $nodeV [my NodeOf $name.b]] - [apply $nodeV $ne]}]
+                set vce [expr {[apply $nodeV [my NodeOf $name.c]] - [apply $nodeV $ne]}]
+                set old [expr {[dict exists $bjtOP $name] ? \
+                    [dict get $bjtOP $name] : {0.0 0.0}}]
+                lassign $old vbe0 vce0
+                if {$vbe - $vbe0 >  0.5} { set vbe [expr {$vbe0 + 0.5}] }
+                if {$vbe0 - $vbe >  0.5} { set vbe [expr {$vbe0 - 0.5}] }
+                if {$vce - $vce0 >  0.5} { set vce [expr {$vce0 + 0.5}] }
+                if {$vce0 - $vce >  0.5} { set vce [expr {$vce0 - 0.5}] }
+                set d [expr {max(abs($vbe-$vbe0), abs($vce-$vce0))}]
+                if {$d > $maxd} { set maxd $d }
+                dict set bjtOP $name [list $vbe $vce]
+            }
+            dict set state bjtOP $bjtOP
             if {$maxd < 1e-9} break
         }
         return [dict create sol $sol branches $branches state $state]
@@ -936,10 +977,42 @@ oo::define ::schem::Schematic {
                     set vds [my voltage $name.d $name.s]
                     set i [lindex [my MosfetGI $name $vgs $vds] 0]
                 }
+                bjt {
+                    set vbe [my voltage $name.b $name.e]
+                    set vce [my voltage $name.c $name.e]
+                    set i [lindex [my BjtGI $name $vbe $vce] 0]
+                }
                 default { return 0.0 }
             }
         }
         return [expr {$signed ? $i : abs($i)}]
+    }
+
+    # BjtGI -- Ebers-Moll forward-active BJT: collector current Ic (C→E
+    # convention), base current Ib (B→E), transconductance gm, base-emitter
+    # conductance gbe, and Early-effect collector-emitter conductance gce,
+    # all at the linearisation point (vbe, vce).  For PNP the voltages are
+    # negated internally; the returned Ic and Ib are negative (current flows
+    # E→C and E→B, the PNP convention).
+    method BjtGI {name vbe vce} {
+        set pr [dict get $Comp $name params]
+        set Is   [expr {double([dict get $pr is])}]
+        set beta [expr {double([dict get $pr beta])}]
+        set nf   [expr {double([dict get $pr n])}]
+        set Vaf  [expr {double([dict get $pr vaf])}]
+        set pnp  [expr {[dict get $pr type] eq "p"}]
+        if {$pnp} { set vbe [expr {-$vbe}] ; set vce [expr {-$vce}] }
+        set Vt [expr {0.025852 * $nf}]
+        set ef [expr {exp(min($vbe/$Vt, 80.0))}]
+        # Early effect: Ic scales with (1 + Vce/Vaf), clamped so it stays positive.
+        set early [expr {$Vaf > 0 ? max(0.01, 1.0 + $vce/$Vaf) : 1.0}]
+        set Ic  [expr {$Is * ($ef - 1.0) * $early}]
+        set gm  [expr {max($Is * $ef / $Vt * $early, 1e-12)}]
+        set gce [expr {$Vaf > 0 ? max($Is * ($ef - 1.0) / $Vaf, 1e-12) : 1e-12}]
+        set Ib  [expr {$Ic / $beta}]
+        set gbe [expr {max($gm / $beta, 1e-12)}]
+        if {$pnp} { set Ic [expr {-$Ic}] ; set Ib [expr {-$Ib}] }
+        return [list $Ic $Ib $gm $gbe $gce]
     }
 
     # DiodeGI -- the diode junction current Id and small-signal conductance gj
@@ -1018,8 +1091,14 @@ oo::define ::schem::Schematic {
             resistor - capacitor - inductor - switch - button -
             fuse - breaker - ammeter { set pins {a b} }
             mosfet {
-                # P_channel = Vds * Id (positive = dissipating in channel)
                 return [expr {[my voltage $name.d $name.s] * [my current $name -signed]}]
+            }
+            bjt {
+                # Total power = Vce*Ic + Vbe*Ib
+                set vbe [my voltage $name.b $name.e]
+                set vce [my voltage $name.c $name.e]
+                lassign [my BjtGI $name $vbe $vce] Ic Ib
+                return [expr {$vce * $Ic + $vbe * $Ib}]
             }
             default { return 0.0 }
         }
@@ -1108,6 +1187,7 @@ oo::define ::schem::Schematic {
         return {}
     }
 
+
     method energized {name} { return [dict exists $Result energized $name] }
 
     # report -- a human-readable summary of the last solve: node voltages,
@@ -1130,7 +1210,7 @@ oo::define ::schem::Schematic {
             set type [dict get $comp type]
             if {$type in {ground bus junction}} continue
             if {[catch {my current $name} i] || $i == 0.0} {
-                if {$type ni {battery resistor relay inductor capacitor switch button fuse breaker ammeter diode mosfet}} continue
+                if {$type ni {battery resistor relay inductor capacitor switch button fuse breaker ammeter diode mosfet bjt}} continue
             }
             lappend out [format "  %-12s %-9s %10.5f A" $name $type $i]
         }

@@ -960,4 +960,115 @@ test zig-dc-mosfet {Zig DC solve matches the engine on MOSFET circuit} -constrai
     nodesMatch $s
 } -cleanup {$s destroy} -result 1
 
+# =====================================================================
+#  BJT tests
+# =====================================================================
+
+# NPN switch ON: base connected to VCC through base resistor => collector
+# pulled down by collector current.
+test bjt-npn-on {NPN BJT: collector pulled low when base driven from VCC} -body {
+    set s [schem::new bno]
+    $s add battery VCC -emf 9
+    $s add ground GND
+    $s add resistor RC -r 1000
+    $s add resistor RB -r 100000
+    $s add bjt Q -is 1e-14 -beta 100
+    $s wire VCC.neg GND.t
+    $s wire VCC.pos RC.a
+    $s wire RC.b Q.c
+    $s wire Q.e GND.t
+    $s wire VCC.pos RB.a
+    $s wire RB.b Q.b
+    $s solve
+    set vc [$s probe Q.c]
+    $s destroy
+    # base is biased from VCC -> transistor is ON -> collector below mid-supply
+    expr {$vc < 4.5}
+} -result 1
+
+# NPN switch OFF: base grounded => no base current => collector stays at VCC.
+test bjt-npn-off {NPN BJT: collector stays at VCC when base is grounded} -body {
+    set s [schem::new bnf]
+    $s add battery VCC -emf 9
+    $s add ground GND
+    $s add resistor RC -r 1000
+    $s add bjt Q -is 1e-14 -beta 100
+    $s wire VCC.neg GND.t
+    $s wire VCC.pos RC.a
+    $s wire RC.b Q.c
+    $s wire Q.e GND.t
+    $s wire Q.b GND.t
+    $s solve
+    set vc [$s probe Q.c]
+    $s destroy
+    # base = 0 V => Vbe = 0 => Ic ≈ 0 => Vc ≈ VCC
+    expr {$vc > 8.9}
+} -result 1
+
+# dcref must reproduce the engine's BJT DC solve to < 1 mV on every node.
+test dcref-bjt {dcref reproduces the engine's BJT operating point (from the IR)} -setup {
+    set s [schem::new dcb]
+    $s add battery VCC -emf 9
+    $s add ground GND
+    $s add resistor RC -r 1000
+    $s add resistor RB -r 100000
+    $s add bjt Q -is 1e-14 -beta 100
+    $s wire VCC.neg GND.t
+    $s wire VCC.pos RC.a
+    $s wire RC.b Q.c
+    $s wire Q.e GND.t
+    $s wire VCC.pos RB.a
+    $s wire RB.b Q.b
+    $s solve
+} -body {
+    set v [schem::backend::dcref [$s compile]]
+    set ir [$s compile] ; set ok 1
+    dict for {nid terms} [dict get $ir nodes map] {
+        if {$nid == 0} continue
+        if {abs([dict get $v $nid] - [$s probe [lindex $terms 0]]) > 1e-3} { set ok 0 }
+    }
+    set ok
+} -cleanup {$s destroy} -result 1
+
+# Zig DC backend must emit a bjtComp function and Newton loop for BJT.
+test zig-emits-bjt {BJT emits the metadata arrays and Newton loop} -constraints zig -setup {
+    set s [schem::new zb]
+    $s add battery VCC -emf 9
+    $s add ground GND
+    $s add resistor RC -r 1000
+    $s add resistor RB -r 100000
+    $s add bjt Q -is 1e-14 -beta 100
+    $s wire VCC.neg GND.t
+    $s wire VCC.pos RC.a
+    $s wire RC.b Q.c
+    $s wire Q.e GND.t
+    $s wire VCC.pos RB.a
+    $s wire RB.b Q.b
+    set z [schem::emit $s zig]
+    proc has {h n} { expr {[string first $n $h] >= 0} }
+} -body {
+    list [has $z "const NB: usize = 1;"] \
+         [has $z "fn bjtComp("] \
+         [has $z "var bjtVbe"] \
+         [has $z "if (maxd < 1e-9) break;"]
+} -cleanup {$s destroy} -result {1 1 1 1}
+
+# Full Zig compile+run reproduces the engine's BJT operating point.
+test zig-dc-bjt {Zig DC solve matches the engine on BJT circuit} -constraints zig -setup {
+    set s [schem::new zdb]
+    $s add battery VCC -emf 9
+    $s add ground GND
+    $s add resistor RC -r 1000
+    $s add resistor RB -r 100000
+    $s add bjt Q -is 1e-14 -beta 100
+    $s wire VCC.neg GND.t
+    $s wire VCC.pos RC.a
+    $s wire RC.b Q.c
+    $s wire Q.e GND.t
+    $s wire VCC.pos RB.a
+    $s wire RB.b Q.b
+} -body {
+    nodesMatch $s
+} -cleanup {$s destroy} -result 1
+
 cleanupTests

@@ -33,6 +33,7 @@ re-deriving device physics:
 | `switch` | switch / button | `state`, closed resistance |
 | `relay` | relay | coil (R, L), `pickup`/`dropout`/`delay`, contact nodes |
 | `nonlinear` | diode | Shockley `is`/`n`, bulk `rs`, breakdown `bv` |
+| `transistor` | mosfet | Shichman-Hodges `vto`/`kp`/`lambda`, `pmos` flag; Newton-linearised at `(vgs, vds)` |
 | `reactive` | capacitor / inductor | value, initial state, parasitics, DC behaviour |
 | `coupled` | transformer | `L1`, `L2`, `k`, mutual `M` |
 | `protective` | fuse / breaker | `rating`, `state`, `i2t` |
@@ -74,8 +75,9 @@ The backends ship today:
     over relay state (coil current → pick-up/drop-out → which contact is
     closed) **and protective state** (a fuse blows / breaker trips on
     over-rating current — an irreversible fault the rest of the circuit then
-    sees), and an **inner Newton over diodes** (Shockley + Zener, series
-    resistance). Covers every element at its DC behaviour — resistors,
+    sees), and an **inner Newton over nonlinear devices** — **diodes**
+    (Shockley + Zener, series resistance) and **MOSFETs** (Shichman-Hodges,
+    NMOS/PMOS, linearised at the converged `(vgs, vds)` operating point). Covers every element at its DC behaviour — resistors,
     batteries with ESR, switches, relays, diodes, ammeters, gauged wires,
     fuses/breakers (which can blow), transformer windings (shorts at DC),
     inductors (a DC short), capacitors (open), and memory chips (data-out
@@ -172,8 +174,9 @@ engine**. With a Zig toolchain available (`SCHEM_ZIG=/path/to/zig`, or `zig`
 on `PATH`), `tests/test_cir.tcl` emits the Zig, compiles + runs it, and
 compares node-for-node:
 
-- **DC**: the divider, a diode (Newton), a relay AND gate (fixed-point) and
-  an over-rating fuse that **blows** (`dcref` and compiled Zig).
+- **DC**: the divider, a diode (Newton), a relay AND gate (fixed-point),
+  an over-rating fuse that **blows**, and an NMOS switch on/off
+  (`dcref` and compiled Zig).
 - **Transient**: an RC charge, an RL ramp, the relay oscillator, a
   switch-gated charge (`-events`) and a fuse blowing on its `i2t` curve —
   step-for-step against the engine's `run()`.

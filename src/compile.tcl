@@ -137,6 +137,17 @@ oo::define ::schem::Schematic {
                             lambda [expr {double([dict get $pr lambda])}] \
                             pmos   [expr {[dict get $pr type] eq "p" ? 1 : 0}]]]
                 }
+                bjt {
+                    set nonlinear 1
+                    lappend elements [dict create name $name type bjt class transistor \
+                        nodes [dict create b [dict get $nd b] c [dict get $nd c] e [dict get $nd e]] \
+                        model [dict create \
+                            is   [expr {double([dict get $pr is])}] \
+                            beta [expr {double([dict get $pr beta])}] \
+                            n    [expr {double([dict get $pr n])}] \
+                            vaf  [expr {double([dict get $pr vaf])}] \
+                            pnp  [expr {[dict get $pr type] eq "p" ? 1 : 0}]]]
+                }
                 capacitor {
                     set reactive 1
                     lappend elements [dict create name $name type capacitor class reactive \
@@ -278,6 +289,10 @@ oo::define ::schem::Schematic {
             }
             transistor {
                 set nd [dict get $e nodes] ; set m [dict get $e model]
+                if {[dict get $e type] eq "bjt"} {
+                    set tp [expr {[dict get $m pnp] ? "pnp" : "npn"}]
+                    return "$head b=[apply $N [dict get $nd b]] c=[apply $N [dict get $nd c]] e=[apply $N [dict get $nd e]]  is=[dict get $m is] beta=[dict get $m beta] n=[dict get $m n] vaf=[dict get $m vaf] ($tp)"
+                }
                 set tp [expr {[dict get $m pmos] ? "pmos" : "nmos"}]
                 return "$head g=[apply $N [dict get $nd g]] d=[apply $N [dict get $nd d]] s=[apply $N [dict get $nd s]]  vto=[dict get $m vto] kp=[dict get $m kp] lambda=[dict get $m lambda] ($tp)"
             }
