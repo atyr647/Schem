@@ -6,8 +6,9 @@ that obeys the fundamental rules of electricity.**
 In Schem the *schematic is the source code*. There are no functions,
 variables, loops, or modules — only electrical parts (batteries, wires,
 switches, relays, resistors, capacitors, inductors, diodes, fuses,
-breakers) wired into circuits. Behavior emerges from continuity and
-current flow, exactly as it does on a real workbench.
+breakers, transformers, memory chips) wired into circuits. Behavior
+emerges from continuity and current flow, exactly as it does on a real
+workbench.
 
 - **The language definition** lives in [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
 - **The architecture** (source = schematic object model; netlist = derived
@@ -135,6 +136,7 @@ checks each fundamental rule against a hand-computed value:
 | Diode realism              | series resistance, and reverse breakdown (a Zener clamps) |
 | Inverse-time protection    | a fuse/breaker with an `i2t` curve blows faster the bigger the overload |
 | Transformer                | coupled windings step voltage by the turns ratio `√(L2/L1)` |
+| Sequential storage         | a memory chip latches a word on the rising `CLK` edge and drives it back out — RAM with no software |
 | Power & energy             | `P = VI` (dissipated/delivered); `½CV²`, `½LI²` stored |
 | Emergent oscillation       | a relay wired through its own NC contact buzzes   |
 | Scale hierarchy            | a circuit → panel → grid flattens and solves      |
@@ -142,17 +144,17 @@ checks each fundamental rule against a hand-computed value:
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 | **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
-Run them (130 tests total):
+Run them (136 tests total):
 
 ```sh
-$ tclsh tests/test_schem.tcl     # 44: the electrical laws + device realism
+$ tclsh tests/test_schem.tcl     # 47: the electrical laws + device realism + memory
 $ tclsh tests/test_format.tcl    #  9: binary round-trip, harness, IR, viewer
 $ tclsh tests/test_tools.tcl     # 17: validator + interactive editor
 $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 $ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
 $ tclsh tests/test_catalog.tcl   #  9: register, adder, counter, decoder, selector, accumulator, sequencer, computer
-$ tclsh tests/test_cir.tcl       # 26: circuit IR + Zig/dcref/digref (literal + digital modes; compiled & run vs the engine)
+$ tclsh tests/test_cir.tcl       # 29: circuit IR + Zig/dcref/digref (literal + digital modes; compiled & run vs the engine)
 ```
 
 ## Examples
