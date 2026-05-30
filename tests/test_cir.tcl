@@ -738,4 +738,24 @@ test zig-seq-buffer {compiled clocked digital shares a tri-state bus across cycl
     seqMatch $s 6 {0 {close SA} 2 {open SA} 2 {close SB} 4 {open SB}}
 } -cleanup {$s destroy} -result ok
 
+# ---- the capstone: a stored-program machine, verified cycle-for-cycle ------
+# Memory (program store) + a relay program counter + tri-state buffers (a
+# shared address bus and output bus) make a tiny CPU.  The clocked-digital
+# backend must reproduce the whole machine -- counter, RAM and buses together --
+# against the electrical engine, every node every cycle.
+
+test digseq-cpu {clocked digital runs a stored-program machine == the engine} -setup {
+    set s [cpuBoard]
+} -body {
+    lassign [cpuProgram] events cycles
+    seqDigEngine $s $cycles $events
+} -cleanup {$s destroy} -result ok
+
+test zig-seq-cpu {clocked digital Zig runs the stored-program machine == engine} -constraints zig -setup {
+    set s [cpuBoard]
+} -body {
+    lassign [cpuProgram] events cycles
+    seqMatch $s $cycles $events
+} -cleanup {$s destroy} -result ok
+
 cleanupTests
