@@ -738,6 +738,85 @@ test zig-seq-buffer {compiled clocked digital shares a tri-state bus across cycl
     seqMatch $s 6 {0 {close SA} 2 {open SA} 2 {close SB} 4 {open SB}}
 } -cleanup {$s destroy} -result ok
 
+# cpuBoard -- the capstone stored-program machine: a 2-bit relay program
+# counter and manual address switches share an address bus through tri-state
+# buffers (RUN vs LOAD banks), a 4x2 RAM holds the program, and the memory's
+# data-out shares an output bus through RUN-gated buffers.  It exercises all
+# three sequential parts (memory + relay counter + tri-state buffers) at once.
+# Driven through cpuProgram's schedule it loads {1 2 3 0} then steps the counter
+# to read the words back, so the OUT bus runs 1,2,3,0,1,2,... -- a program
+# executing purely electrically.  (Mirrors examples/stored_program.tcl.)
+proc cpuBoard {} {
+    set s [schem::new cpu]
+    $s add battery V -emf 12 ; $s add ground G ; $s wire V.neg G.t
+    set cnt [$s instantiate [schem::lib::counter C 2] PC]
+    $s wire [dict get $cnt VCC] V.pos ; $s wire [dict get $cnt GND] G.t
+    $s add switch PCLK ; $s wire V.pos PCLK.a ; $s wire PCLK.b [dict get $cnt CLK]
+    $s add memory M -abits 2 -dbits 2 ; $s wire M.GND G.t
+    $s add switch RUN ; $s wire V.pos RUN.a
+    $s add relay INV -coil 1000 ; $s wire RUN.b INV.c1 ; $s wire INV.c2 G.t
+    $s wire V.pos INV.com ; set nrun INV.nc
+    foreach i {0 1} {
+        $s add junction AB$i ; $s wire AB$i.t M.A$i
+        $s add resistor KA$i -r 100000 ; $s wire AB$i.t KA$i.a ; $s wire KA$i.b G.t
+        $s add buffer RB$i
+        $s wire [dict get $cnt Q$i] RB$i.in ; $s wire RUN.b RB$i.oe ; $s wire RB$i.out AB$i.t
+        $s add switch LA$i ; $s wire V.pos LA$i.a
+        $s add buffer LB$i
+        $s wire LA$i.b LB$i.in ; $s wire $nrun LB$i.oe ; $s wire LB$i.out AB$i.t
+    }
+    foreach i {0 1} { $s add switch LD$i ; $s wire V.pos LD$i.a ; $s wire LD$i.b M.DI$i }
+    $s add switch WE   ; $s wire V.pos WE.a   ; $s wire WE.b   M.WE
+    $s add switch WCLK ; $s wire V.pos WCLK.a ; $s wire WCLK.b M.CLK
+    foreach i {0 1} {
+        $s add junction OB$i
+        $s add resistor KO$i -r 100000 ; $s wire OB$i.t KO$i.a ; $s wire KO$i.b G.t
+        $s add buffer OBF$i
+        $s wire M.DO$i OBF$i.in ; $s wire RUN.b OBF$i.oe ; $s wire OBF$i.out OB$i.t
+    }
+    return $s
+}
+# cpuProgram -- {events cycles}: load addr0=01 addr1=10 addr2=11 addr3=00 via
+# WCLK writes through the LOAD bank, then sweep the program counter via PCLK.
+proc cpuProgram {} {
+    return [list {
+        0 {close LD0} 0 {close WE}
+        1 {close WCLK} 2 {open WCLK}
+        3 {close LA0} 3 {open LD0} 3 {close LD1}
+        4 {close WCLK} 5 {open WCLK}
+        6 {open LA0} 6 {close LA1} 6 {close LD0}
+        7 {close WCLK} 8 {open WCLK}
+        9 {close LA0} 9 {open LD0} 9 {open LD1}
+        10 {close WCLK} 11 {open WCLK}
+        12 {open WE} 12 {close RUN}
+        13 {close PCLK} 14 {open PCLK}
+        15 {close PCLK} 16 {open PCLK}
+        17 {close PCLK} 18 {open PCLK}
+        19 {close PCLK} 20 {open PCLK}
+        21 {close PCLK} 22 {open PCLK}
+    } 23]
+}
+# seqDigEngine -- engine vs digseq over a schedule, every node every cycle (the
+# zig-free half of seqMatch, so it runs without a toolchain).
+proc seqDigEngine {s cycles events} {
+    set byc [dict create]
+    foreach {cy op} $events { dict lappend byc $cy $op }
+    set st {}
+    for {set cy 0} {$cy < $cycles} {incr cy} {
+        if {[dict exists $byc $cy]} { foreach op [dict get $byc $cy] { $s {*}$op } }
+        $s solve
+        set cir [$s compile]
+        set r [schem::backend::digseq $cir $st] ; set st [dict get $r state]
+        set lv [dict get $r levels]
+        dict for {nid terms} [dict get $cir nodes map] {
+            if {$nid == 0} continue
+            set eng [expr {[$s probe [lindex $terms 0]] > 6 ? 1 : 0}]
+            if {$eng != [dict get $lv $nid]} { return "cycle $cy N$nid: engine=$eng digseq=[dict get $lv $nid]" }
+        }
+    }
+    return ok
+}
+
 # ---- the capstone: a stored-program machine, verified cycle-for-cycle ------
 # Memory (program store) + a relay program counter + tri-state buffers (a
 # shared address bus and output bus) make a tiny CPU.  The clocked-digital

@@ -159,6 +159,12 @@ Committed samples of `schem emit zig`:
   its held bit across six clock cycles (write 1, go transparent, hold, re-clock)
   — the same `Q` the engine settles each cycle.
 
+The capstone `examples/stored_program.tcl` composes the three sequential parts
+— a memory (the program store), a relay counter (the program counter) and
+tri-state buffers (a shared address bus and output bus) — into a tiny CPU, and
+checks the fast clocked-digital backend (`digseq`) reproduces the engine's
+output bus on every cycle as the machine runs its program (OUT = 1, 2, 3, 0, …).
+
 ## Verification
 
 The emitted Zig is **compiled and run, and diffed against the electrical
@@ -173,9 +179,11 @@ compares node-for-node:
   step-for-step against the engine's `run()`.
 - **Digital**: every logic gate, the half- and full-adder — the compiled
   digital and literal programs and the engine agreeing on every node.
-- **Clocked digital**: a D latch held across clock cycles and a RAM
-  write/read/reread sequence — the compiled clocked-digital program, `digseq`
-  and the engine agreeing on every node, every cycle.
+- **Clocked digital**: a D latch held across clock cycles, a RAM
+  write/read/reread sequence, and a whole **stored-program machine** (a relay
+  program counter sweeping a RAM-held program onto tri-state buses) — the
+  compiled clocked-digital program, `digseq` and the engine agreeing on every
+  node, every cycle.
 
 These were verified against Zig 0.13.0; every case matches to within `1e-3`.
 When no toolchain is present the compile-and-run tests **skip** cleanly, and a

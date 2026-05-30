@@ -494,8 +494,14 @@ oo::define ::schem::Schematic {
 
             my StoreResult $sol $branches
             set chD [my UpdateDevices $branches energized]
-            set chM [my UpdateMemory memout memwrote]
             set chB [my UpdateBuffers bufdrv]
+            # A clocked write must sample the *settled* address/data.  When the
+            # bus feeding a memory's address or data pins is driven by relays or
+            # tri-state buffers, those must converge first -- otherwise the
+            # rising-edge write (which fires once per solve) would latch the
+            # bus's pre-settled value.  So permit the write only once relays and
+            # buffers are stable this pass; the combinational read runs always.
+            set chM [my UpdateMemory memout memwrote [expr {!$chD && !$chB}]]
             if {!$chD && !$chM && !$chB} break
 
             # Oscillation: if device state recurs without settling, the
@@ -750,7 +756,7 @@ oo::define ::schem::Schematic {
     # with the addressed cell (combinational read), and on a rising clock edge
     # (vs the previous solve) with write-enable, store data-in into that cell.
     # Returns 1 if the driven word changed (so the fixed point re-solves).
-    method UpdateMemory {memoutVar memwroteVar} {
+    method UpdateMemory {memoutVar memwroteVar {allowWrite 1}} {
         upvar 1 $memoutVar memout $memwroteVar memwrote
         if {![dict exists $Result vmap]} { return 0 }
         set changed 0
@@ -775,7 +781,7 @@ oo::define ::schem::Schematic {
             }
             # rising-edge action (once per solve): write DI to the selected cell
             # when WE; a tape then steps its head one cell LEFT/RIGHT.
-            if {![dict exists $memwrote $name] && $clk && !$prevclk} {
+            if {$allowWrite && ![dict exists $memwrote $name] && $clk && !$prevclk} {
                 if {$we} {
                     set di {}
                     for {set i 0} {$i < $db} {incr i} { lappend di [expr {[my MemHigh $name DI$i $thr] ? 1 : 0}] }

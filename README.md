@@ -139,6 +139,7 @@ checks each fundamental rule against a hand-computed value:
 | Sequential storage         | a memory chip latches a word on the rising `CLK` edge and drives it back out — RAM with no software |
 | Unbounded memory           | a tape-mode memory moves its head `LEFT`/`RIGHT` over a sparse, growing store — a Turing tape (full Turing completeness, no gate explosion) |
 | Shared bus (tri-state)     | a buffer drives the bus only when its output-enable is high, else releases it (Hi-Z) — many talkers, a few wires |
+| Stored-program machine     | a relay program counter steps a program held in RAM onto a shared bus through tri-state buffers — a tiny CPU, the schematic running its own program |
 | Power & energy             | `P = VI` (dissipated/delivered); `½CV²`, `½LI²` stored |
 | Emergent oscillation       | a relay wired through its own NC contact buzzes   |
 | Scale hierarchy            | a circuit → panel → grid flattens and solves      |
@@ -146,7 +147,7 @@ checks each fundamental rule against a hand-computed value:
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 | **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
-Run them (151 tests total):
+Run them (153 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 50: the electrical laws + device realism + memory (RAM + Turing tape) + tri-state buses
@@ -156,7 +157,7 @@ $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 $ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
 $ tclsh tests/test_catalog.tcl   #  9: register, adder, counter, decoder, selector, accumulator, sequencer, computer
-$ tclsh tests/test_cir.tcl       # 41: circuit IR + Zig/dcref/digref/digseq (literal, digital & clocked-digital; compiled & run vs the engine)
+$ tclsh tests/test_cir.tcl       # 43: circuit IR + Zig/dcref/digref/digseq (literal, digital & clocked-digital; compiled & run vs the engine)
 ```
 
 ## Examples
@@ -175,6 +176,7 @@ $ tclsh tests/test_cir.tcl       # 41: circuit IR + Zig/dcref/digref/digseq (lit
 | `examples/accumulator.tcl`             | a register+adder running total (stateful arithmetic) |
 | `examples/sequencer.tcl`               | counter+decoder control phases (FETCH/EXEC/...) |
 | `examples/computer.tcl`                | a controlled multiplier panel that halts |
+| `examples/stored_program.tcl`          | a stored-program machine: program in RAM, a relay PC, tri-state buses (verified == the engine) |
 | `examples/grid.tcl`                    | panels composed into a grid (the full hierarchy) |
 | `examples/voltage_divider.zig`         | a sample `schem emit zig` DC solver (generated) |
 | `examples/relay_and_gate.zig`          | emitted Zig for a relay gate (fixed-point loop) |

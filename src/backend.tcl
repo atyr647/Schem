@@ -1114,14 +1114,21 @@ proc ::schem::backend::digseq {cir {state {}}} {
             lassign $r nm c1 c2 com no nc
             if {[info exists high($c1)] != [info exists high($c2)]} { dict set newen $nm 1 }
         }
-        if {$newen ne $energized} { set energized $newen ; set changed 1 }
+        set relCh [expr {$newen ne $energized}]
+        if {$relCh} { set energized $newen ; set changed 1 }
         # tri-state buffers: drive a 1 onto the output iff enabled and input high
         set newbo [dict create]
         foreach b $buffers {
             lassign $b in oe out
             if {[info exists high($oe)] && [info exists high($in)]} { dict set newbo $out 1 }
         }
-        if {$newbo ne $bufout} { set bufout $newbo ; set changed 1 }
+        set bufCh [expr {$newbo ne $bufout}]
+        if {$bufCh} { set bufout $newbo ; set changed 1 }
+        # A clocked write must sample the *settled* address/data: only let it
+        # fire once relays and tri-state buffers are stable this pass, exactly
+        # as the engine's solve gates it -- otherwise a bus-driven address/data
+        # would latch its pre-settled value.  The combinational read runs always.
+        set allowWrite [expr {!$relCh && !$bufCh}]
         # memory: read the selected cell, latch a write on the rising clock edge.
         # RAM decodes its address pins; a tape uses its (persistent) head, which
         # steps LEFT/RIGHT on the edge -- so its store is unbounded, never 2^N.
@@ -1135,7 +1142,7 @@ proc ::schem::backend::digseq {cir {state {}}} {
             }
             set clkH [info exists high($clk)] ; set weH [info exists high($we)]
             set pc [expr {[dict exists $prevclk $nm] ? [dict get $prevclk $nm] : 0}]
-            if {![dict exists $memwrote $nm] && $clkH && !$pc} {
+            if {$allowWrite && ![dict exists $memwrote $nm] && $clkH && !$pc} {
                 if {$weH} {
                     set d {}
                     for {set i 0} {$i < $db} {incr i} { lappend d [expr {[info exists high([lindex $di $i])] ? 1 : 0}] }
@@ -1460,7 +1467,7 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
             set mv [dict get $e move]
             lappend S "        { var addr: usize = m${mi}_head;"
             lappend S "          const clkH = high\[$clk\]; const weH = high\[$we\];"
-            lappend S "          if (!m${mi}_wrote and clkH and !m${mi}_prevclk) {"
+            lappend S "          if (relays_stable and !m${mi}_wrote and clkH and !m${mi}_prevclk) {"
             lappend S "              if (weH) {"
             for {set i 0} {$i < $db} {incr i} { lappend S "                  m${mi}_cells\[addr\]\[$i\] = high\[[lindex $di $i]\];" }
             lappend S "              }"
@@ -1477,7 +1484,7 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
             lappend S "        { var addr: usize = 0;"
             for {set i 0} {$i < $ab} {incr i} { lappend S "          if (high\[[lindex $addr $i]\]) addr |= [expr {1 << $i}];" }
             lappend S "          const clkH = high\[$clk\]; const weH = high\[$we\];"
-            lappend S "          if (!m${mi}_wrote and clkH and weH and !m${mi}_prevclk) {"
+            lappend S "          if (relays_stable and !m${mi}_wrote and clkH and weH and !m${mi}_prevclk) {"
             for {set i 0} {$i < $db} {incr i} { lappend S "              m${mi}_cells\[addr\]\[$i\] = high\[[lindex $di $i]\];" }
             lappend S "              m${mi}_wrote = true; changed = true;"
             lappend S "          }"
