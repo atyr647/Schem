@@ -77,6 +77,8 @@ oo::define ::schem::Schematic {
         dict for {name comp} $Comp {
             if {[dict get $comp type] eq "transformer"} { dict set xfmrI $name {0.0 0.0} }
         }
+        set memout [dict create]      ;# per-memory output word (one-dt lag)
+
         set out [dict create t {}]
         foreach sig $record { dict set out $sig {} }
 
@@ -152,9 +154,11 @@ oo::define ::schem::Schematic {
             dict set state coilState $coilState
             dict set state xfmrState $xfmrState
 
-            # Solve this instant, holding relay/fuse/breaker state fixed
-            # (their state was decided by the *previous* step -> dt lag).
+            # Solve this instant, holding relay/fuse/breaker state and the
+            # memory output word fixed (decided by the *previous* step -> dt
+            # lag, the same physical latency that lets sequential logic clock).
             dict set Result energized $energized
+            dict set Result memout $memout
             set res [my SolveOP $state tran]
             set sol [dict get $res sol]
             set branches [dict get $res branches]
@@ -232,6 +236,13 @@ oo::define ::schem::Schematic {
             # actual (ramping) current of any inductive coil.  Devices with an
             # i2t curve are handled by TripThermal above, not instantly here.
             my UpdateDevices $branches energized pend $tnow $coilI 1
+
+            # Clock the memory: latch a write on this step's rising CLK edge and
+            # recompute the word it drives next step, then remember the clock
+            # level so the next step can detect the following edge.
+            set memwrote [dict create]
+            my UpdateMemory memout memwrote
+            my MemLatchClock
         }
         dict set Result faults $Faults
         return $out

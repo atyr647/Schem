@@ -624,4 +624,40 @@ test transformer-ratio {a 2:1 transformer steps voltage by the turns ratio} -set
     expr {abs($v2/$v1 - 0.495) < 0.02}
 } -cleanup {$s destroy} -result 1
 
+# ---- memory (RAM): clocked write, persistent read ------------------------
+
+test memory-pins {a memory's terminals scale with its address/data width} -setup {
+    set s [schem::new m] ; $s add memory M -abits 3 -dbits 4
+} -body {
+    # 3 address + 4 data-in + 4 data-out + WE + CLK + GND = 14 pins.
+    set t [$s terminals M]
+    list [llength $t] [expr {"A2" in $t}] [expr {"DI3" in $t}] [expr {"DO3" in $t}] [expr {"WE" in $t}]
+} -cleanup {$s destroy} -result {14 1 1 1 1}
+
+test memory-fresh-reads-zero {a powered-up memory drives all data-out lines low} -setup {
+    set s [schem::new m]
+    $s add battery B -emf 12 ; $s add ground G ; $s add memory M -abits 2 -dbits 2
+    $s wire B.neg G.t ; $s wire M.GND G.t ; $s wire B.pos M.A0
+    $s solve
+} -body {
+    list [format %.2f [$s probe M.DO0]] [format %.2f [$s probe M.DO1]]
+} -cleanup {$s destroy} -result {0.00 0.00}
+
+test memory-write-read {a clocked write seals a word in; it reads back later} -setup {
+    set s [schem::new m]
+    $s add battery B -emf 12 ; $s add ground G ; $s add memory M -abits 2 -dbits 2
+    $s add switch SW -state open
+    $s wire B.neg G.t ; $s wire M.GND G.t
+    $s wire B.pos M.DI0 ; $s wire B.pos M.WE      ;# write the value 0b01 to addr 0
+    $s wire B.pos SW.a ; $s wire SW.b M.CLK       ;# SW pulses the clock
+} -body {
+    # Pulse the clock once (rising edge writes); the word then persists, and
+    # data-out reads it back one step later and holds it after CLK falls.
+    set r [$s run -duration 0.008 -dt 0.001 -record {M.DO0 M.DO1} \
+            -events {0.002 {close SW} 0.004 {open SW}}]
+    set do0 [dict get $r M.DO0] ; set do1 [dict get $r M.DO1]
+    # before the edge: low; after it (and after CLK falls): DO0 high, DO1 low.
+    list [format %.1f [lindex $do0 1]] [format %.1f [lindex $do0 end]] [format %.1f [lindex $do1 end]]
+} -cleanup {$s destroy} -result {0.0 12.0 0.0}
+
 cleanupTests

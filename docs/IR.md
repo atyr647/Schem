@@ -38,6 +38,7 @@ re-deriving device physics:
 | `protective` | fuse / breaker | `rating`, `state`, `i2t` |
 | `meter` | ammeter | a 0 V branch |
 | `conductor` | gauged wire | resistance (AWG×len), ampacity |
+| `memory` | RAM / ROM | `abits`/`dbits`, `mode`, address / data-in / data-out / `WE` / `CLK` nodes |
 
 Plus a node table (node 0 = ground), the ports, and `analysis` flags
 (`reactive` / `nonlinear` / `stateful`) so a backend knows what machinery it
@@ -75,7 +76,10 @@ The backends ship today:
     resistance). Covers every element at its DC behaviour — resistors,
     batteries with ESR, switches, relays, diodes, ammeters, gauged wires,
     fuses/breakers (which can blow), transformer windings (shorts at DC),
-    inductors (a DC short), capacitors (open).
+    inductors (a DC short), capacitors (open), and memory chips (data-out
+    drives the stored word through the output resistance, address/data/control
+    pins are weak pull-downs — the power-on contents at a static operating
+    point, since writes are clocked events, not part of a single DC solve).
   - **Transient** (`schem emit zig FILE -transient -duration T -dt DT
     ?-events {t {op SW} …}?`) — a time-stepping solver with backward-Euler
     companion models (capacitors with ESR/leakage, inductors and inductive
@@ -84,8 +88,10 @@ The backends ship today:
     that blow on their `i2t` time-current curve** (instantaneous when `i2t`=0),
     and timed **stimulus** (switches/buttons operated on a schedule) — the
     engine's transient analyser. It prints a table of node voltages over time.
-    The one remaining niche is transformer mutual coupling in transient (the
-    engine covers it); nothing else diverges silently within scope.
+    The remaining niches are transformer mutual coupling and clocked memory in
+    transient (the engine covers both — `run()` clocks a memory on its rising
+    `CLK` edge and seals the word in); the emitter refuses them rather than
+    diverge silently, so nothing diverges silently within scope.
   - **Digital** (`schem emit zig FILE -digital`) — for a *provably-digital*
     relay-logic circuit, a boolean cycle evaluator: a net is HIGH iff a
     closed-contact path reaches a supply rail (reachability), relays switch on
@@ -94,7 +100,8 @@ The backends ship today:
     gives the **identical** HIGH/LOW result at O(nets+contacts) per pass
     instead of an O(n^x) matrix factorisation (measured ~3× faster native on a
     266-node adder, the gap widening with size). It refuses non-digital parts
-    (diodes/reactives/transformers) — use literal mode for those.
+    (diodes/reactives/transformers) and the sequential memory chip — use
+    literal mode (or, for clocked memory, the engine) for those.
 - **`dcref`** — a Tcl reference for the *literal* mode: solves the DC operating
   point straight from the IR (the same lowering the emitters use), the oracle
   the literal emitters are checked against.

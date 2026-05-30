@@ -104,6 +104,22 @@ proc ::schem::backend::LowerDC {cir} {
                 if {$r > 0} { lappend conds [list [dict get $nd a] [dict get $nd b] [expr {1.0/$r}] $nm] } \
                 else { lappend branches [list [dict get $nd a] [dict get $nd b] 0.0 0.0 $nm] }
             }
+            memory {
+                # A memory chip at DC: address/data-in/control pins are weak
+                # pull-downs (a real high input resistance), and each data-out
+                # pin is a logic driver to ground -- vhigh for a stored 1, else
+                # 0, through the output resistance.  The IR is stateless, so the
+                # static operating point reads the power-on contents (all 0):
+                # the DO drivers all sit at 0 V.  (Writes are clocked events,
+                # not part of a single DC solve -- the engine agrees.)
+                set gin [expr {1.0/[dict get $e rin]}]
+                set ro  [dict get $e rout]
+                foreach a [dict get $e address] { lappend conds [list $a 0 $gin $nm.in] }
+                foreach d [dict get $e di]      { lappend conds [list $d 0 $gin $nm.in] }
+                lappend conds [list [dict get $e we]  0 $gin $nm.in]
+                lappend conds [list [dict get $e clk] 0 $gin $nm.in]
+                foreach d [dict get $e do] { lappend branches [list $d 0 0.0 $ro $nm.do] }
+            }
         }
     }
     set n [dict get $cir nodes count]
@@ -560,6 +576,7 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
                     [dict get $kn com] [dict get $kn no] [dict get $kn nc] $ci $nm]
             }
             coupled { return -code error "zig transient does not yet support transformers ([dict get $e name])" }
+            memory  { return -code error "zig transient does not yet support memory ([dict get $e name]); the engine's run() clocks it -- use the engine for sequential memory" }
         }
     }
     set SZ [expr {$N + [llength $branches]}]

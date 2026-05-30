@@ -81,7 +81,7 @@ oo::define ::schem::Schematic {
             set type [dict get $comp type]
             set pr [dict get $comp params]
             set nd [dict create]
-            foreach pin [dict get $META($type) terminals] {
+            foreach pin [my terminals $name] {
                 dict set nd $pin [dict get $Node $name.$pin]
             }
             switch $type {
@@ -171,6 +171,21 @@ oo::define ::schem::Schematic {
                 ammeter {
                     lappend elements [dict create name $name type ammeter class meter \
                         nodes [dict create a [dict get $nd a] b [dict get $nd b]]]
+                }
+                memory {
+                    set stateful 1
+                    set ab [dict get $pr abits] ; set db [dict get $pr dbits]
+                    set anodes {} ; set dinodes {} ; set donodes {}
+                    for {set i 0} {$i < $ab} {incr i} { lappend anodes  [dict get $nd A$i] }
+                    for {set i 0} {$i < $db} {incr i} { lappend dinodes [dict get $nd DI$i] }
+                    for {set i 0} {$i < $db} {incr i} { lappend donodes [dict get $nd DO$i] }
+                    lappend elements [dict create name $name type memory class memory \
+                        abits $ab dbits $db mode [dict get $pr mode] \
+                        vhigh [expr {double([dict get $pr vhigh])}] \
+                        rout [expr {double([dict get $pr rout])}] \
+                        rin [expr {double([dict get $pr rin])}] \
+                        address $anodes di $dinodes do $donodes \
+                        we [dict get $nd WE] clk [dict get $nd CLK] gnd [dict get $nd GND]]
                 }
                 ground - bus - junction {
                     # Pure connectivity: already folded into the node map.
@@ -263,6 +278,10 @@ oo::define ::schem::Schematic {
             conductor {
                 set nd [dict get $e nodes]
                 return "$head a=[apply $N [dict get $nd a]] b=[apply $N [dict get $nd b]]  awg=[dict get $e awg] len=[dict get $e len] r=[dict get $e r] ampacity=[dict get $e ampacity]"
+            }
+            memory {
+                set fmt {l {join [lmap n $l {expr {"N$n"}}] ","}}
+                return "$head [dict get $e abits]x[dict get $e dbits] mode=[dict get $e mode] addr\[[apply $fmt [dict get $e address]]\] di\[[apply $fmt [dict get $e di]]\] do\[[apply $fmt [dict get $e do]]\] we=[apply $N [dict get $e we]] clk=[apply $N [dict get $e clk]] gnd=[apply $N [dict get $e gnd]] vhigh=[dict get $e vhigh]"
             }
         }
         return "$head ?"

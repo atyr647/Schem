@@ -65,6 +65,7 @@ namespace eval ::schem {
         fuse      {terminals {a b}         params {rating 1.0 state intact i2t 0.0}}
         diode     {terminals {a k}         params {is 1e-14 n 1.0 rs 0.0 bv 0.0}}
         transformer {terminals {p1 n1 p2 n2} params {l1 1.0 l2 1.0 k 0.99}}
+        memory    {terminals {}            params {abits 4 dbits 8 mode ram vhigh 12.0 rout 1e-3 rin 1e6}}
         bus       {terminals {t}           params {}}
         junction  {terminals {t}           params {}}
         ammeter   {terminals {a b}         params {}}
@@ -100,6 +101,7 @@ oo::class create ::schem::Schematic {
     variable Faults   ;# list of fault descriptions from last solve
     variable Diode    ;# diode name -> last junction voltage (Newton state)
     variable Energized ;# persistent relay-coil state (enables latch memory)
+    variable Mem       ;# persistent memory-chip state: name -> {cells prevclk}
     variable NodeDirty ;# 1 when the wiring changed and nodes must be rebuilt
     variable Name
 
@@ -112,6 +114,7 @@ oo::class create ::schem::Schematic {
         set Faults {}
         set Diode [dict create]
         set Energized [dict create]
+        set Mem [dict create]
         set Node [dict create]
         set NodeDirty 1
     }
@@ -119,8 +122,9 @@ oo::class create ::schem::Schematic {
     method name {} { return $Name }
 
     # powerReset -- clear persistent sequential state (relay latches return
-    # to de-energised, the power-on condition).  Does not touch wiring.
-    method powerReset {} { set Energized [dict create] ; return }
+    # to de-energised, memory clears) -- the power-on condition.  Does not
+    # touch wiring.
+    method powerReset {} { set Energized [dict create] ; set Mem [dict create] ; return }
 
     # ---- construction (the "workbench") ----------------------------
 
@@ -151,9 +155,24 @@ oo::class create ::schem::Schematic {
             }
             dict set params $key $v
         }
-        dict set Comp $name [dict create type $type params $params attrs $attrs]
+        set comp [dict create type $type params $params attrs $attrs]
+        # A memory chip's pins depend on its address/data width.
+        if {$type eq "memory"} { dict set comp pins [my MemPins $params] }
+        dict set Comp $name $comp
         set NodeDirty 1
         return $name
+    }
+
+    # MemPins -- the terminal list for a memory of the given width: address in,
+    # data in / data out, write-enable, clock, ground.
+    method MemPins {params} {
+        set pins {}
+        set ab [dict get $params abits] ; set db [dict get $params dbits]
+        for {set i 0} {$i < $ab} {incr i} { lappend pins A$i }
+        for {set i 0} {$i < $db} {incr i} { lappend pins DI$i }
+        for {set i 0} {$i < $db} {incr i} { lappend pins DO$i }
+        lappend pins WE CLK GND
+        return $pins
     }
 
     method ParsePos {v} {
@@ -237,6 +256,11 @@ oo::class create ::schem::Schematic {
         }
         dict set Comp $name params [dict replace \
             [dict get $Comp $name params] $key $value]
+        # changing a memory's width regenerates its pins (and the node map)
+        if {[dict get $Comp $name type] eq "memory" && $key in {abits dbits}} {
+            dict set Comp $name pins [my MemPins [dict get $Comp $name params]]
+            set NodeDirty 1
+        }
         return
     }
 
@@ -266,9 +290,12 @@ oo::class create ::schem::Schematic {
     method components {} { return [dict keys $Comp] }
     method typeof {name} { return [dict get $Comp $name type] }
 
-    # terminals -- the pin names a placed component exposes.
+    # terminals -- the pin names a placed component exposes.  A component may
+    # carry instance-specific pins (a memory chip's address/data width); else
+    # the pins come from the type's metadata.
     method terminals {name} {
         variable ::schem::META
+        if {[dict exists $Comp $name pins]} { return [dict get $Comp $name pins] }
         return [dict get $META([dict get $Comp $name type]) terminals]
     }
 
@@ -305,23 +332,17 @@ oo::class create ::schem::Schematic {
         if {![dict exists $Comp $name]} {
             return -code error "no such component \"$name\" in terminal \"$term\""
         }
-        variable ::schem::META
-        set type [dict get $Comp $name type]
-        set valid [dict get $META($type) terminals]
+        set valid [my terminals $name]
         if {$pin ni $valid} {
-            return -code error "$type \"$name\" has no terminal \"$pin\" (has: $valid)"
+            return -code error "[dict get $Comp $name type] \"$name\" has no terminal \"$pin\" (has: $valid)"
         }
         return $term
     }
 
     method AllTerminals {} {
-        variable ::schem::META
         set out {}
         dict for {name c} $Comp {
-            set type [dict get $c type]
-            foreach pin [dict get $META($type) terminals] {
-                lappend out $name.$pin
-            }
+            foreach pin [my terminals $name] { lappend out $name.$pin }
         }
         return $out
     }

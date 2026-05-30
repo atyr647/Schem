@@ -194,6 +194,35 @@ test cir-dcref-switch {the IR captures switch state (open vs closed)} -setup {
     list [expr {abs([dict get $open $nid]) < 0.1}] [expr {[dict get $closed $nid] > 9.9}]
 } -cleanup {$s destroy} -result {1 1}
 
+# ---- the IR lowers a memory chip to its role + address/data/control nodes -
+
+test cir-memory-role {a memory is lowered with its width, mode and pin nodes} -setup {
+    set s [schem::new m]
+    $s add battery B -emf 12 ; $s add ground G ; $s add memory M -abits 3 -dbits 4
+    $s wire B.neg G.t ; $s wire M.GND G.t
+    set ir [$s compile]
+} -body {
+    set e [lindex [lmap el [dict get $ir elements] {expr {[dict get $el class] eq "memory" ? $el : [continue]}}] 0]
+    list [dict get $e abits] [dict get $e dbits] [dict get $e mode] \
+         [llength [dict get $e address]] [llength [dict get $e di]] [llength [dict get $e do]] \
+         [dict get $ir analysis stateful]
+} -cleanup {$s destroy} -result {3 4 ram 3 4 4 1}
+
+test cir-dcref-memory {a memory-containing solve driven only by the IR matches the engine} -setup {
+    set s [schem::new m]
+    $s add battery B -emf 12 ; $s add ground G ; $s add memory M -abits 2 -dbits 2
+    $s wire B.neg G.t ; $s wire M.GND G.t ; $s wire B.pos M.A0 ; $s wire B.pos M.WE
+    $s solve
+} -body {
+    set v [schem::backend::dcref [$s compile]]
+    set ok 1
+    dict for {nid terms} [dict get [$s compile] nodes map] {
+        if {$nid == 0} continue
+        if {abs([dict get $v $nid] - [$s probe [lindex $terms 0]]) > 1e-4} { set ok 0 }
+    }
+    set ok
+} -cleanup {$s destroy} -result 1
+
 # ---- the Zig backend emits the expected program, and refuses the rest -----
 
 test zig-emits-divider {the Zig backend emits a well-formed DC solver for the divider} -setup {
@@ -306,6 +335,15 @@ test digref-refuses-analog {digital mode refuses non-digital parts} -body {
     set rc [catch {schem::backend::digref [$s compile]} e]
     $s destroy
     list $rc [string match "*not digital*diode*" $e]
+} -result {1 1}
+
+test digref-refuses-memory {digital mode refuses a (sequential) memory chip} -body {
+    set s [schem::new a]
+    $s add battery B ; $s add ground GND ; $s add memory M -abits 2 -dbits 2
+    $s wire B.neg GND.t ; $s wire M.GND GND.t ; $s wire B.pos M.A0
+    set rc [catch {schem::backend::digref [$s compile]} e]
+    $s destroy
+    list $rc [string match "*not digital*memory*" $e]
 } -result {1 1}
 
 test dcref-relay-truthtable {dcref reproduces a relay AND gate's truth table from the IR} -body {

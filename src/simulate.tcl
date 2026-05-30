@@ -162,9 +162,31 @@ oo::define ::schem::Schematic {
                             p [my NodeOf $name.p2] q [my NodeOf $name.n2] emf 0.0]
                     }
                 }
+                memory {
+                    # Each data-out pin is a logic driver: a source to ground
+                    # at vhigh (bit 1) or 0 (bit 0) through a small output
+                    # resistance.  The driven word comes from the fixed point
+                    # (the addressed cell), held in Result memout.
+                    set vh [expr {double([dict get $pr vhigh])}]
+                    set ro [expr {double([dict get $pr rout])}]
+                    set db [dict get $pr dbits]
+                    set word [my MemWord $name]
+                    for {set i 0} {$i < $db} {incr i} {
+                        set bit [expr {([lindex $word $i]) ? $vh : 0.0}]
+                        lappend br [dict create owner $name.DO$i kind memout \
+                            p [my NodeOf $name.DO$i] q 0 emf $bit rs $ro]
+                    }
+                }
             }
         }
         return $br
+    }
+
+    # MemWord -- the data word a memory is currently driving onto its DO pins,
+    # decided by the fixed point (held in Result memout); defaults to all-zero.
+    method MemWord {name} {
+        if {[dict exists $Result memout $name]} { return [dict get $Result memout $name] }
+        return [lrepeat [dict get $Comp $name params dbits] 0]
     }
 
     # RelayEnergized -- has the relay coil drawn enough current to pick up?
@@ -302,6 +324,17 @@ oo::define ::schem::Schematic {
                         apply $stampI $p2 $n2 $i2p
                     }
                 }
+                memory {
+                    # The address / data-in / control pins are high-impedance
+                    # senses: a weak pull-down so an undriven pin reads LOW and
+                    # the chip presents a real (large) input resistance.
+                    set gin [expr {1.0/double([dict get $pr rin])}]
+                    set ab [dict get $pr abits] ; set db [dict get $pr dbits]
+                    for {set i 0} {$i < $ab} {incr i} { apply $stampG [my NodeOf $name.A$i] 0 $gin }
+                    for {set i 0} {$i < $db} {incr i} { apply $stampG [my NodeOf $name.DI$i] 0 $gin }
+                    apply $stampG [my NodeOf $name.WE] 0 $gin
+                    apply $stampG [my NodeOf $name.CLK] 0 $gin
+                }
             }
         }
 
@@ -416,9 +449,11 @@ oo::define ::schem::Schematic {
         # what gives sequential circuits memory: a sealed-in latch that was
         # energised stays energised across solves until something resets it.
         set energized $Energized
+        set memout [dict create] ; set memwrote [dict create]
         set seen [dict create]
         for {set outer 0} {$outer < 200} {incr outer} {
             dict set Result energized $energized
+            dict set Result memout $memout
             if {[catch {my SolveOP $state} res opts]} {
                 if {[lrange [dict get $opts -errorcode] 0 1] eq {SCHEM SINGULAR}} {
                     lappend Faults [dict create kind short \
@@ -433,13 +468,14 @@ oo::define ::schem::Schematic {
             set state [dict get $res state]
 
             my StoreResult $sol $branches
-            set changed [my UpdateDevices $branches energized]
-            if {!$changed} break
+            set chD [my UpdateDevices $branches energized]
+            set chM [my UpdateMemory memout memwrote]
+            if {!$chD && !$chM} break
 
-            # Oscillation: if a relay state recurs without settling, the
+            # Oscillation: if device state recurs without settling, the
             # circuit is astable (e.g. a buzzer).  Stop and note it -- a
             # stable DC operating point does not exist; use transient.
-            set key [lsort [dict keys $energized]]
+            set key [list [lsort [dict keys $energized]] $memout]
             if {[dict exists $seen $key]} {
                 lappend Faults [dict create kind astable \
                     detail "no stable DC state (relay feedback oscillates): use transient analysis (run)"]
@@ -448,6 +484,7 @@ oo::define ::schem::Schematic {
             dict set seen $key 1
         }
         set Energized $energized   ;# persist for the next solve
+        my MemLatchClock         ;# remember each memory's clock level for edge detection
         if {[dict exists $state diodeV]} { my StoreDiodeCurrents [dict get $state diodeV] }
         set Result [dict replace $Result faults $Faults]
         my CheckOverload
@@ -652,6 +689,58 @@ oo::define ::schem::Schematic {
                 set h 0.0
             }
             dict set heat $name $h
+        }
+    }
+
+    # MemBits / MemAddr -- read a memory's pins from the solved node voltages.
+    method MemHigh {name pin thr} { return [expr {[dict get $Result vmap $name.$pin] > $thr}] }
+
+    # UpdateMemory -- a memory chip in the fixed point: drive its data-out pins
+    # with the addressed cell (combinational read), and on a rising clock edge
+    # (vs the previous solve) with write-enable, store data-in into that cell.
+    # Returns 1 if the driven word changed (so the fixed point re-solves).
+    method UpdateMemory {memoutVar memwroteVar} {
+        upvar 1 $memoutVar memout $memwroteVar memwrote
+        if {![dict exists $Result vmap]} { return 0 }
+        set changed 0
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] ne "memory"} continue
+            set pr [dict get $comp params]
+            set ab [dict get $pr abits] ; set db [dict get $pr dbits]
+            set thr [expr {double([dict get $pr vhigh]) / 2.0}]
+            set addr 0
+            for {set i 0} {$i < $ab} {incr i} {
+                if {[my MemHigh $name A$i $thr]} { set addr [expr {$addr | (1 << $i)}] }
+            }
+            set cells [expr {[dict exists $Mem $name cells] ? [dict get $Mem $name cells] : [dict create]}]
+            set clk [my MemHigh $name CLK $thr] ; set we [my MemHigh $name WE $thr]
+            set prevclk [expr {[dict exists $Mem $name prevclk] ? [dict get $Mem $name prevclk] : 0}]
+            # rising-edge write (once per solve), RAM only
+            if {[dict get $pr mode] eq "ram" && ![dict exists $memwrote $name] \
+                && $clk && $we && !$prevclk} {
+                set di {}
+                for {set i 0} {$i < $db} {incr i} { lappend di [expr {[my MemHigh $name DI$i $thr] ? 1 : 0}] }
+                dict set cells $addr $di
+                dict set Mem $name cells $cells
+                dict set memwrote $name 1
+                set changed 1
+            }
+            set word [expr {[dict exists $cells $addr] ? [dict get $cells $addr] : [lrepeat $db 0]}]
+            if {![dict exists $memout $name] || [dict get $memout $name] ne $word} {
+                dict set memout $name $word ; set changed 1
+            }
+        }
+        return $changed
+    }
+
+    # MemLatchClock -- remember each memory's clock level (for next solve's
+    # rising-edge detection).
+    method MemLatchClock {} {
+        if {![dict exists $Result vmap]} return
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] ne "memory"} continue
+            set thr [expr {double([dict get $comp params vhigh]) / 2.0}]
+            dict set Mem $name prevclk [expr {[my MemHigh $name CLK $thr] ? 1 : 0}]
         }
     }
 
