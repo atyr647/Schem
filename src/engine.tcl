@@ -363,3 +363,4 @@ oo::class create ::schem::Schematic {
 
 # Load the simulation methods (kept in a separate file for clarity).
 source [file join [file dirname [info script]] simulate.tcl]
+source [file join [file dirname [info script]] ac.tcl]
