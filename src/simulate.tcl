@@ -191,6 +191,19 @@ oo::define ::schem::Schematic {
                             rs [expr {double([dict get $pr rout])}]]
                     }
                 }
+                core {
+                    # The sense winding emits a pulse only on a destructive
+                    # read -- the instant a stored 1 is flipped back to 0 by the
+                    # read drive.  The fixed point records that event in Result
+                    # coresense; while it is set the sense line is driven high so
+                    # a downstream sense amplifier (a latch) can catch it.
+                    if {[dict exists $Result coresense $name] && [dict get $Result coresense $name]} {
+                        lappend br [dict create owner $name.s kind coresense \
+                            p [my NodeOf $name.s] q 0 \
+                            emf [expr {double([dict get $pr vhigh])}] \
+                            rs [expr {double([dict get $pr rout])}]]
+                    }
+                }
             }
         }
         return $br
@@ -271,6 +284,41 @@ oo::define ::schem::Schematic {
                     set r [expr {double([dict get $pr r])}]
                     if {$r <= 0} { set r 1e-9 }
                     apply $stampG [my NodeOf $name.a] [my NodeOf $name.b] [expr {1.0/$r}]
+                }
+                lamp {
+                    # An indicator lamp is, electrically, a filament: a plain
+                    # resistance that dissipates power.  Whether it is visibly
+                    # lit is decided after the solve from the current it draws
+                    # (see the `lit` query); here it is just a conductance.
+                    set r [expr {double([dict get $pr r])}]
+                    if {$r <= 0} { set r 1e-9 }
+                    apply $stampG [my NodeOf $name.a] [my NodeOf $name.b] [expr {1.0/$r}]
+                }
+                nixie {
+                    # A cold-cathode display: a common anode and ten cathodes,
+                    # one per digit.  Each cathode glows when its glow-discharge
+                    # path conducts, i.e. when that cathode is pulled low while
+                    # the anode is high.  Model each cathode as a resistance from
+                    # the anode; the lit digit is the conducting cathode.
+                    set r [expr {double([dict get $pr r])}]
+                    if {$r <= 0} { set r 1e-9 }
+                    set na [my NodeOf $name.a]
+                    for {set d 0} {$d < 10} {incr d} {
+                        apply $stampG $na [my NodeOf $name.k$d] [expr {1.0/$r}]
+                    }
+                }
+                core {
+                    # A magnetic-core bit.  The X and Y drive lines each thread
+                    # the core as a single turn -- electrically a near-ideal
+                    # conductor, modelled as a tiny resistance so the line
+                    # current is measurable and many cores can string along one
+                    # line (a real core plane).  The magnetisation itself is
+                    # decided in the fixed point (UpdateCore); the sense output
+                    # is a branch source added in Branches when a read flips it.
+                    set rl [expr {double([dict get $pr rline])}]
+                    if {$rl <= 0} { set rl 1e-9 }
+                    apply $stampG [my NodeOf $name.xp] [my NodeOf $name.xn] [expr {1.0/$rl}]
+                    apply $stampG [my NodeOf $name.yp] [my NodeOf $name.yn] [expr {1.0/$rl}]
                 }
                 relay {
                     set rc [expr {double([dict get $pr coil])}]
@@ -555,6 +603,9 @@ oo::define ::schem::Schematic {
         set memout [dict create] ; set memwrote [dict create]
         set bufdrv [dict create]
         set seen [dict create]
+        # Fresh per-solve record of which cores fired their sense line on a
+        # destructive read (so a new solve starts with no pulse pending).
+        dict set Result coresense [dict create]
         for {set outer 0} {$outer < 200} {incr outer} {
             dict set Result energized $energized
             dict set Result memout $memout
@@ -582,7 +633,8 @@ oo::define ::schem::Schematic {
             # bus's pre-settled value.  So permit the write only once relays and
             # buffers are stable this pass; the combinational read runs always.
             set chM [my UpdateMemory memout memwrote [expr {!$chD && !$chB}]]
-            if {!$chD && !$chM && !$chB} break
+            set chC [my UpdateCore]
+            if {!$chD && !$chM && !$chB && !$chC} break
 
             # Oscillation: if device state recurs without settling, the
             # circuit is astable (e.g. a buzzer).  Stop and note it -- a
@@ -827,6 +879,42 @@ oo::define ::schem::Schematic {
                 }
             } elseif {[dict exists $bufdrv $name]} {
                 dict unset bufdrv $name ; set changed 1   ;# released -> Hi-Z
+            }
+        }
+        return $changed
+    }
+
+    # UpdateCore -- magnetic-core write/read by coincident current, evaluated
+    # each fixed-point pass.  A core's net drive is the ampere-sum of its two
+    # threading lines, (Vx+Vy)/rline.  It flips to 1 once the net reaches
+    # +iswitch and to 0 at -iswitch; a half-select on one line alone (driven at
+    # ~0.6*iswitch in use) stays below threshold, so only the cell where both
+    # selected lines cross actually switches -- the coincidence that lets one
+    # plane address many cores.  A read is simply a reset drive: flipping a
+    # stored 1 down to 0 is a *destructive* read and fires the sense line,
+    # recorded in Result coresense and held set for the rest of this solve so a
+    # downstream sense amplifier (a latch) can catch the pulse.  Returns 1 if
+    # any core changed state (so the fixed point re-solves).
+    method UpdateCore {} {
+        if {![dict exists $Result vmap]} { return 0 }
+        set vmap [dict get $Result vmap]
+        set changed 0
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] ne "core"} continue
+            set pr [dict get $comp params]
+            set rl [expr {double([dict get $pr rline])}]
+            if {$rl <= 0} { set rl 1e-9 }
+            set isw [expr {double([dict get $pr iswitch])}]
+            set net [expr {([dict get $vmap $name.xp] - [dict get $vmap $name.xn] \
+                          + [dict get $vmap $name.yp] - [dict get $vmap $name.yn]) / $rl}]
+            set was [my coreBit $name]
+            if {$net >= $isw} {
+                if {!$was} { dict set Core $name 1 ; set changed 1 }
+            } elseif {$net <= -$isw} {
+                if {$was} {
+                    dict set Core $name 0 ; set changed 1
+                    dict set Result coresense $name 1   ;# destructive-read sense pulse
+                }
             }
         }
         return $changed
@@ -1190,6 +1278,44 @@ oo::define ::schem::Schematic {
 
     method energized {name} { return [dict exists $Result energized $name] }
 
+    # ---- indicator lamp / Nixie read-outs -------------------------------
+
+    # lampCurrent -- filament current of an indicator lamp from the last solve.
+    method lampCurrent {name} {
+        set pr [dict get $Comp $name params]
+        set r [expr {double([dict get $pr r])}]
+        if {$r <= 0} { set r 1e-9 }
+        expr {([dict get $Result vmap $name.a] - [dict get $Result vmap $name.b]) / $r}
+    }
+    # lit -- is the lamp glowing?  True once its current reaches the glow
+    # threshold ion.  brightness gives that current relative to the threshold
+    # (0 = dark, 1 = just lit, >1 = driven harder/brighter).
+    method lit {name} {
+        expr {abs([my lampCurrent $name]) >= double([dict get $Comp $name params ion])}
+    }
+    method brightness {name} {
+        set thr [expr {double([dict get $Comp $name params ion])}]
+        if {$thr <= 0} { set thr 1e-12 }
+        expr {abs([my lampCurrent $name]) / $thr}
+    }
+
+    # digit -- the digit a Nixie tube is showing: the cathode drawing the most
+    # current, provided it is above the glow threshold; -1 when the tube is
+    # dark (no cathode pulled low).
+    method digit {name} {
+        set pr [dict get $Comp $name params]
+        set r [expr {double([dict get $pr r])}]
+        if {$r <= 0} { set r 1e-9 }
+        set thr [expr {double([dict get $pr ion])}]
+        set va [dict get $Result vmap $name.a]
+        set best -1 ; set bestI $thr
+        for {set d 0} {$d < 10} {incr d} {
+            set i [expr {($va - [dict get $Result vmap $name.k$d]) / $r}]
+            if {$i >= $bestI} { set bestI $i ; set best $d }
+        }
+        return $best
+    }
+
     # report -- a human-readable summary of the last solve: node voltages,
     # component currents and any faults.  Solves first if needed.
     method report {} {
@@ -1214,6 +1340,27 @@ oo::define ::schem::Schematic {
             }
             lappend out [format "  %-12s %-9s %10.5f A" $name $type $i]
         }
+        # Indicators / displays / non-volatile cells -- the parts whose job is
+        # to *show* or *hold* a value rather than carry a measurable current.
+        set ind {}
+        dict for {name comp} $Comp {
+            switch [dict get $comp type] {
+                lamp  {
+                    lappend ind [format "  %-12s lamp   %s" $name \
+                        [expr {[my lit $name] ? "(*) lit" : "( ) dark"}]]
+                }
+                nixie {
+                    set d [my digit $name]
+                    lappend ind [format "  %-12s nixie  %s" $name \
+                        [expr {$d < 0 ? "(dark)" : $d}]]
+                }
+                core  {
+                    lappend ind [format "  %-12s core   %d%s" $name [my coreBit $name] \
+                        [expr {[my coreSensed $name] ? "  <- sense pulse" : ""}]]
+                }
+            }
+        }
+        if {[llength $ind]} { lappend out "Indicators:" ; lappend out {*}$ind }
         set f [my faults]
         if {[llength $f]} {
             lappend out "Faults:"

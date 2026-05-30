@@ -72,6 +72,9 @@ namespace eval ::schem {
         bus       {terminals {t}           params {}}
         junction  {terminals {t}           params {}}
         ammeter   {terminals {a b}         params {}}
+        lamp      {terminals {a b}         params {r 240.0 ion 0.01}}
+        nixie     {terminals {a k0 k1 k2 k3 k4 k5 k6 k7 k8 k9} params {r 47000.0 ion 1.0e-4}}
+        core      {terminals {xp xn yp yn s} params {iswitch 1.0 vhigh 12.0 rout 1.0e-3 rline 1.0e-3}}
     }
 
     # AWG -> continuous ampacity (amps), a representative subset.
@@ -105,6 +108,10 @@ oo::class create ::schem::Schematic {
     variable Diode    ;# diode name -> last junction voltage (Newton state)
     variable Energized ;# persistent relay-coil state (enables latch memory)
     variable Mem       ;# persistent memory-chip state: name -> {cells prevclk}
+    variable Core      ;# persistent magnetic-core remanence: name -> bit.
+                       ;# NONVOLATILE: ferrite cores keep their magnetisation
+                       ;# with the power off, so powerReset must NOT clear this
+                       ;# (only an explicit degauss does).
     variable NodeDirty ;# 1 when the wiring changed and nodes must be rebuilt
     variable Name
 
@@ -118,6 +125,7 @@ oo::class create ::schem::Schematic {
         set Diode [dict create]
         set Energized [dict create]
         set Mem [dict create]
+        set Core [dict create]
         set Node [dict create]
         set NodeDirty 1
     }
@@ -125,9 +133,24 @@ oo::class create ::schem::Schematic {
     method name {} { return $Name }
 
     # powerReset -- clear persistent sequential state (relay latches return
-    # to de-energised, memory clears) -- the power-on condition.  Does not
-    # touch wiring.
+    # to de-energised, volatile memory clears) -- the power-on condition.  Does
+    # not touch wiring, and deliberately does NOT clear magnetic cores: core
+    # memory is non-volatile and survives a power cycle (that is its whole
+    # point).  Use degauss to wipe the cores.
     method powerReset {} { set Energized [dict create] ; set Mem [dict create] ; return }
+
+    # degauss -- wipe all magnetic cores back to 0.  This is the only thing
+    # that clears core remanence (a power cycle does not), modelling a bulk
+    # erase / demagnetisation of the ferrite plane.
+    method degauss {} { set Core [dict create] ; return }
+
+    # coreBit / coreSensed -- inspect a magnetic core after a solve.  coreBit
+    # is the stored remanent bit; coreSensed is 1 when the most recent solve's
+    # read pulse flipped this core 1->0 (a destructive read saw a stored one).
+    method coreBit {name} { expr {[dict exists $Core $name] ? [dict get $Core $name] : 0} }
+    method coreSensed {name} {
+        expr {[dict exists $Result coresense $name] ? [dict get $Result coresense $name] : 0}
+    }
 
     # ---- construction (the "workbench") ----------------------------
 

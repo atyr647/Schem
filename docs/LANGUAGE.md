@@ -30,6 +30,10 @@ Everything in Schem is built from electrical abstractions.
 **Conductors** — Wire, Bus, Junction, Harness
 **Control** — Button, Switch, Relay, Breaker, Fuse, Diode
 **Passive** — Resistor, Capacitor, Inductor
+**Indicators** — Lamp (glows above a current threshold), Nixie tube
+(displays the digit of whichever cathode is pulled low)
+**Memory** — Capacitor, Latch, RAM/tape chip, Magnetic core (a
+non-volatile bit set and read by coincident current)
 **Measurement** — Meter, Probe, Continuity Tester
 **Structural** — Circuit, Panel, Grid
 
