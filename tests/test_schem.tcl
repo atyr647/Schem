@@ -689,4 +689,24 @@ test memory-write-read {a clocked write seals a word in; it reads back later} -s
     list [format %.1f [lindex $do0 1]] [format %.1f [lindex $do0 end]] [format %.1f [lindex $do1 end]]
 } -cleanup {$s destroy} -result {0.0 12.0 0.0}
 
+# ---- tri-state buffers sharing a bus -------------------------------------
+
+test buffer-tristate {a tri-state buffer drives only when enabled, else releases the bus} -setup {
+    set s [schem::new bus]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add buffer A ; $s wire VCC.pos A.in        ;# A drives HIGH when enabled
+    $s add buffer B                                ;# B drives LOW  when enabled
+    $s add switch SA -state open ; $s wire VCC.pos SA.a ; $s wire SA.b A.oe
+    $s add switch SB -state open ; $s wire VCC.pos SB.a ; $s wire SB.b B.oe
+    $s wire A.out B.out                            ;# shared bus
+    $s add resistor RB -r 100000 ; $s wire A.out RB.a ; $s wire RB.b GND.t  ;# bus keeper
+} -body {
+    proc ::bus {s} { expr {[$s probe A.out] > 6 ? 1 : 0} }
+    $s open SA  ; $s open SB  ; $s solve ; set hiz [bus $s]   ;# both released -> pulled low
+    $s close SA ; $s open SB  ; $s solve ; set a [bus $s]     ;# A owns the bus -> HIGH
+    $s open SA  ; $s close SB ; $s solve ; set b [bus $s]     ;# B owns the bus -> LOW
+    rename ::bus {}
+    list $hiz $a $b
+} -cleanup {$s destroy} -result {0 1 0}
+
 cleanupTests

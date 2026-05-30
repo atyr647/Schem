@@ -78,6 +78,7 @@ oo::define ::schem::Schematic {
             if {[dict get $comp type] eq "transformer"} { dict set xfmrI $name {0.0 0.0} }
         }
         set memout [dict create]      ;# per-memory output word (one-dt lag)
+        set bufdrv [dict create]      ;# per-buffer tri-state drive (one-dt lag)
 
         set out [dict create t {}]
         foreach sig $record { dict set out $sig {} }
@@ -159,6 +160,7 @@ oo::define ::schem::Schematic {
             # lag, the same physical latency that lets sequential logic clock).
             dict set Result energized $energized
             dict set Result memout $memout
+            dict set Result bufdrv $bufdrv
             set res [my SolveOP $state tran]
             set sol [dict get $res sol]
             set branches [dict get $res branches]
@@ -243,6 +245,7 @@ oo::define ::schem::Schematic {
             set memwrote [dict create]
             my UpdateMemory memout memwrote
             my MemLatchClock
+            my UpdateBuffers bufdrv
         }
         dict set Result faults $Faults
         return $out

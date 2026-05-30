@@ -66,6 +66,18 @@ proc digLitEngineAgree {s} {
     }
     return $ok
 }
+# digEngineAgree -- compiled digital Zig == the engine (no literal comparison;
+# for circuits the literal DC backend declines, e.g. tri-state buffers).
+proc digEngineAgree {s} {
+    $s solve
+    set dig [zigDig $s] ; set ir [$s compile] ; set ok 1
+    dict for {nid terms} [dict get $ir nodes map] {
+        if {$nid == 0} continue
+        set eng [expr {[$s probe [lindex $terms 0]] > 6 ? 1 : 0}]
+        if {[dict get $dig $nid] != $eng} { set ok 0 }
+    }
+    return $ok
+}
 proc nodesMatch {s} {
     $s solve
     set z [zigNodes $s] ; set ir [$s compile] ; set ok 1
@@ -268,6 +280,63 @@ test cir-memory-tape-role {a tape memory lowers with head move pins, no address}
     list [dict get $e mode] [dict get $e abits] [llength [dict get $e address]] \
          [expr {[dict exists $e move left] && [dict exists $e move right]}]
 } -cleanup {$s destroy} -result {tape 0 0 1}
+
+test cir-buffer-role {a tri-state buffer lowers to its in/oe/out role} -setup {
+    set s [schem::new b]
+    $s add battery B -emf 12 ; $s add ground G ; $s add buffer U
+    $s wire B.neg G.t ; $s wire B.pos U.in
+    set ir [$s compile]
+} -body {
+    set e [elem $ir U]
+    list [dict get $e class] [expr {[dict exists $e in] && [dict exists $e oe] && [dict exists $e out]}]
+} -cleanup {$s destroy} -result {buffer 1}
+
+# busBoard -- two tri-state buffers (A drives HIGH, B drives LOW) on a shared
+# bus with a weak keeper, gated by switches SA/SB.  Used by the bus tests.
+proc busBoard {} {
+    set s [schem::new bus]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add buffer A ; $s wire VCC.pos A.in ; $s add buffer B
+    $s add switch SA ; $s wire VCC.pos SA.a ; $s wire SA.b A.oe
+    $s add switch SB ; $s wire VCC.pos SB.a ; $s wire SB.b B.oe
+    $s wire A.out B.out
+    $s add resistor RB -r 100000 ; $s wire A.out RB.a ; $s wire RB.b GND.t
+    return $s
+}
+
+test cir-dcref-buffer {dcref drives a tri-state bus exactly like the engine} -setup {
+    set s [busBoard]
+} -body {
+    set ok 1
+    foreach {sa sb} {0 0  1 0  0 1} {
+        if {$sa} {$s close SA} else {$s open SA}
+        if {$sb} {$s close SB} else {$s open SB}
+        $s solve
+        set v [schem::backend::dcref [$s compile]]
+        dict for {nid terms} [dict get [$s compile] nodes map] {
+            if {$nid == 0} continue
+            if {abs([dict get $v $nid] - [$s probe [lindex $terms 0]]) > 1e-3} { set ok 0 }
+        }
+    }
+    set ok
+} -cleanup {$s destroy} -result 1
+
+test digref-buffer {digital evaluation drives a tri-state bus like the engine} -setup {
+    set s [busBoard]
+} -body {
+    set ok 1
+    foreach {sa sb} {0 0  1 0  0 1} {
+        if {$sa} {$s close SA} else {$s open SA}
+        if {$sb} {$s close SB} else {$s open SB}
+        $s solve
+        set d [schem::backend::digref [$s compile]]
+        dict for {nid terms} [dict get [$s compile] nodes map] {
+            if {$nid == 0} continue
+            if {[expr {[$s probe [lindex $terms 0]] > 6 ? 1 : 0}] != [dict get $d $nid]} { set ok 0 }
+        }
+    }
+    set ok
+} -cleanup {$s destroy} -result 1
 
 # ---- the Zig backend emits the expected program, and refuses the rest -----
 
@@ -655,6 +724,18 @@ test zig-seq-tape {compiled clocked digital reproduces an unbounded Turing tape}
                     5 {close S_CLK} \
                     6 {open S_CLK} 6 {open S_WE} 6 {open S_RIGHT} 6 {close S_LEFT} 6 {open S_DI0} 6 {open S_DI1} \
                     7 {close S_CLK} 8 {open S_CLK} 9 {close S_CLK} 10 {open S_CLK} 11 {close S_CLK}}
+} -cleanup {$s destroy} -result ok
+
+test zig-digital-buffer {compiled digital Zig drives a tri-state bus, matching the engine} -constraints zig -setup {
+    set s [busBoard] ; $s close SA   ;# A enabled -> bus HIGH
+} -body { digEngineAgree $s } -cleanup {$s destroy} -result 1
+
+test zig-seq-buffer {compiled clocked digital shares a tri-state bus across cycles} -constraints zig -setup {
+    set s [busBoard]
+} -body {
+    # A owns the bus (HIGH), then hands it to B (LOW), then both release (LOW)
+    # -- one-hot ownership of the shared line, cycle for cycle vs the engine.
+    seqMatch $s 6 {0 {close SA} 2 {open SA} 2 {close SB} 4 {open SB}}
 } -cleanup {$s destroy} -result ok
 
 cleanupTests

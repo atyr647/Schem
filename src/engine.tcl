@@ -66,6 +66,7 @@ namespace eval ::schem {
         diode     {terminals {a k}         params {is 1e-14 n 1.0 rs 0.0 bv 0.0}}
         transformer {terminals {p1 n1 p2 n2} params {l1 1.0 l2 1.0 k 0.99}}
         memory    {terminals {}            params {abits 4 dbits 8 mode ram vhigh 12.0 rout 1e-3 rin 1e6}}
+        buffer    {terminals {in oe out}   params {vhigh 12.0 rout 1e-3 rin 1e6}}
         bus       {terminals {t}           params {}}
         junction  {terminals {t}           params {}}
         ammeter   {terminals {a b}         params {}}

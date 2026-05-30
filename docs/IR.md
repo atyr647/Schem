@@ -39,6 +39,7 @@ re-deriving device physics:
 | `meter` | ammeter | a 0 V branch |
 | `conductor` | gauged wire | resistance (AWG×len), ampacity |
 | `memory` | RAM / ROM / tape | `abits`/`dbits`, `mode`, data-in / data-out / `WE` / `CLK` nodes; RAM carries address pins, a tape carries `LEFT`/`RIGHT` head-move pins (an unbounded store) |
+| `buffer` | tri-state buffer | `in` / `oe` / `out` nodes, `vhigh`/`rout`; drives the bus when `oe` is high, else high-impedance (Hi-Z) so others can |
 
 Plus a node table (node 0 = ground), the ports, and `analysis` flags
 (`reactive` / `nonlinear` / `stateful`) so a backend knows what machinery it
@@ -100,8 +101,11 @@ The backends ship today:
     electrical solve — it is a verified, semantics-preserving compilation that
     gives the **identical** HIGH/LOW result at O(nets+contacts) per pass
     instead of an O(n^x) matrix factorisation (measured ~3× faster native on a
-    266-node adder, the gap widening with size). It refuses non-digital parts
-    (diodes/reactives/transformers) — use literal mode for those.
+    266-node adder, the gap widening with size). It also handles **tri-state
+    buffers** sharing a bus — a buffer drives a 1 onto its output only when its
+    output-enable is high (like a rail), otherwise releasing the line. It
+    refuses non-digital parts (diodes/reactives/transformers) — use literal
+    mode for those.
   - **Clocked digital** (`schem emit zig FILE -digital -cycles N ?-events
     {cycle {op SW} …}?`) — the *sequential* counterpart. Where plain digital
     settles one operating point, this **carries relay and memory state across

@@ -48,7 +48,7 @@ proc ::schem::backends {} {
 # state-controlled conductances; diodes are nonlinear.  Capacitors are open at
 # DC and drop out.  Nothing is refused -- every part has a DC lowering.
 proc ::schem::backend::LowerDC {cir} {
-    set conds {} ; set branches {} ; set relays {} ; set diodes {} ; set protect {}
+    set conds {} ; set branches {} ; set relays {} ; set diodes {} ; set protect {} ; set buffers {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -124,11 +124,24 @@ proc ::schem::backend::LowerDC {cir} {
                 }
                 foreach d [dict get $e do] { lappend branches [list $d 0 0.0 $ro $nm.do] }
             }
+            buffer {
+                # A tri-state buffer: in/oe are weak pull-down senses; out is a
+                # settable/openable branch -- driven through rout when enabled,
+                # else high-impedance (the branch is forced to I=0).  The
+                # enable/drive decision is the fixed point's (bufdrv), like a
+                # protective device's open/closed state.
+                set gin [expr {1.0/[dict get $e rin]}]
+                lappend conds [list [dict get $e in] 0 $gin $nm.in]
+                lappend conds [list [dict get $e oe] 0 $gin $nm.in]
+                lappend buffers [list [llength $branches] [dict get $e in] [dict get $e oe] \
+                    [dict get $e vhigh] [dict get $e rout] $nm]
+                lappend branches [list [dict get $e out] 0 0.0 [dict get $e rout] $nm.out]
+            }
         }
     }
     set n [dict get $cir nodes count]
     return [dict create n $n sz [expr {$n + [llength $branches]}] \
-        conds $conds branches $branches relays $relays diodes $diodes protect $protect]
+        conds $conds branches $branches relays $relays diodes $diodes protect $protect buffers $buffers]
 }
 
 # DiodeGI -- junction current Id and small-signal conductance gj at junction
@@ -165,12 +178,15 @@ proc ::schem::backend::dcref {cir} {
     if {$SZ == 0} { return [dict create 0 0.0] }
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
-    set protect [dict get $L protect]
+    set protect [dict get $L protect] ; set buffers [dict get $L buffers]
     set gc [expr {1.0/$RSMALL}]
+    set b2buf [dict create]   ;# branch index -> {in oe vhigh rout} for tri-state buffers
+    foreach buf $buffers { lassign $buf bi in oe vh ro nm ; dict set b2buf $bi [list $in $oe $vh $ro] }
 
     set energized [lrepeat [llength $relays] 0]
     set diodeV    [lrepeat [llength $diodes] 0.0]
     set fbopen    [dict create]   ;# protective branch index -> 1 once tripped
+    set bufdrv    [dict create]   ;# buffer branch index -> driven voltage (absent = Hi-Z)
     set x {}
 
     for {set outer 0} {$outer < 200} {incr outer} {
@@ -197,11 +213,17 @@ proc ::schem::backend::dcref {cir} {
             foreach br $branches {
                 lassign $br p q emf rs _
                 set row [expr {$N + $k}]
-                if {[dict exists $fbopen $k]} {
-                    # blown/tripped protective device: force I_branch = 0 (open).
+                if {[dict exists $fbopen $k] || ([dict exists $b2buf $k] && ![dict exists $bufdrv $k])} {
+                    # blown protective device, or a disabled (Hi-Z) tri-state
+                    # buffer: force I_branch = 0 (open).
                     ::schem::la::spacc A $row $row 1.0
                     lset z $row 0.0
                 } else {
+                    if {[dict exists $b2buf $k]} {
+                        # enabled buffer: drive its output through rout.
+                        lassign [dict get $b2buf $k] _in _oe _vh ro
+                        set emf [dict get $bufdrv $k] ; set rs $ro
+                    }
                     if {$p != 0} { ::schem::la::spacc A [expr {$p-1}] $row 1.0 ; ::schem::la::spacc A $row [expr {$p-1}] 1.0 }
                     if {$q != 0} { ::schem::la::spacc A [expr {$q-1}] $row -1.0 ; ::schem::la::spacc A $row [expr {$q-1}] -1.0 }
                     if {$rs != 0} { ::schem::la::spacc A $row $row [expr {-$rs}] }
@@ -242,6 +264,15 @@ proc ::schem::backend::dcref {cir} {
             lassign $p bi rating i2t nm
             if {[dict exists $fbopen $bi]} continue
             if {abs([lindex $x [expr {$N + $bi}]]) > $rating} { dict set fbopen $bi 1 ; set changed 1 }
+        }
+        # Tri-state buffers: drive when output-enable is high, else release (Hi-Z).
+        foreach buf $buffers {
+            lassign $buf bi in oe vh ro nm
+            set thr [expr {$vh/2.0}]
+            if {[Nv $x $oe] > $thr} {
+                set val [expr {[Nv $x $in] > $thr ? double($vh) : 0.0}]
+                if {![dict exists $bufdrv $bi] || [dict get $bufdrv $bi] != $val} { dict set bufdrv $bi $val ; set changed 1 }
+            } elseif {[dict exists $bufdrv $bi]} { dict unset bufdrv $bi ; set changed 1 }
         }
         if {!$changed} break
     }
@@ -298,6 +329,9 @@ proc ::schem::backend::zig {cir args} {
     if {$transient} { return [::schem::backend::ZigTran $cir $duration $dt $events] }
     variable ::schem::RSMALL
     set L [LowerDC $cir]
+    if {[llength [dict get $L buffers]]} {
+        return -code error "zig (literal DC) does not yet support tri-state buffers; use digital mode (zig -digital) or the dcref reference"
+    }
     set N [dict get $L n] ; set SZ [dict get $L sz]
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
@@ -586,6 +620,7 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
             }
             coupled { return -code error "zig transient does not yet support transformers ([dict get $e name])" }
             memory  { return -code error "zig transient does not yet support memory ([dict get $e name]); the engine's run() clocks it -- use the engine for sequential memory" }
+            buffer  { return -code error "zig transient does not yet support tri-state buffers ([dict get $e name]); use digital mode (zig -digital) or the engine" }
         }
     }
     set SZ [expr {$N + [llength $branches]}]
@@ -896,7 +931,7 @@ proc ::schem::backend::ZigTran {cir duration dt {events {}}} {
 # (diodes, reactives, transformers) -- use literal mode for those.
 proc ::schem::backend::digref {cir} {
     set N [dict get $cir nodes count]
-    set vcc {} ; set static {} ; set relays {} ; set unsupported {}
+    set vcc {} ; set static {} ; set relays {} ; set buffers {} ; set unsupported {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -911,6 +946,7 @@ proc ::schem::backend::digref {cir} {
                 set cn [dict get $e coil nodes] ; set kn [dict get $e contact nodes]
                 lappend relays [list [dict get $cn c1] [dict get $cn c2] [dict get $kn com] [dict get $kn no] [dict get $kn nc]]
             }
+            buffer     { lappend buffers [list [dict get $e in] [dict get $e oe] [dict get $e out]] }
             meter      { lappend static [list [dict get $nd a] [dict get $nd b]] }
             protective { if {[dict get $e state] in {intact closed}} { lappend static [list [dict get $nd a] [dict get $nd b]] } }
             conductor  { lappend static [list [dict get $nd a] [dict get $nd b]] }
@@ -920,7 +956,7 @@ proc ::schem::backend::digref {cir} {
     if {[llength $unsupported]} {
         return -code error "digital mode needs a relay-logic circuit; not digital: [join $unsupported {, }]"
     }
-    set energized [dict create]
+    set energized [dict create] ; set bufout [dict create]
     for {set iter 0} {$iter < 1000} {incr iter} {
         # closed-edge adjacency for this relay state
         array unset adj ; array set adj {}
@@ -934,10 +970,11 @@ proc ::schem::backend::digref {cir} {
             lappend adj($com) $t ; lappend adj($t) $com
             incr ri
         }
-        # HIGH = reachable from any supply rail through closed contacts.
+        # HIGH = reachable from any supply rail (or an enabled buffer driving a
+        # 1 onto the bus) through closed contacts.
         array unset high ; array set high {}
         set queue {}
-        foreach v $vcc { if {![info exists high($v)]} { set high($v) 1 ; lappend queue $v } }
+        foreach v [concat $vcc [dict keys $bufout]] { if {![info exists high($v)]} { set high($v) 1 ; lappend queue $v } }
         while {[llength $queue]} {
             set cur [lindex $queue 0] ; set queue [lrange $queue 1 end]
             foreach nb [expr {[info exists adj($cur)] ? $adj($cur) : {}}] {
@@ -952,8 +989,14 @@ proc ::schem::backend::digref {cir} {
             if {[info exists high($c1)] != [info exists high($c2)]} { dict set newen $ri 1 }
             incr ri
         }
-        if {$newen eq $energized} break
-        set energized $newen
+        # a tri-state buffer drives a 1 onto its output iff enabled and input high
+        set newbo [dict create]
+        foreach b $buffers {
+            lassign $b in oe out
+            if {[info exists high($oe)] && [info exists high($in)]} { dict set newbo $out 1 }
+        }
+        if {$newen eq $energized && $newbo eq $bufout} break
+        set energized $newen ; set bufout $newbo
     }
     set v [dict create 0 0]
     for {set i 1} {$i <= $N} {incr i} { dict set v $i [expr {[info exists high($i)] ? 1 : 0}] }
@@ -988,7 +1031,7 @@ proc ::schem::backend::digref {cir} {
 # Returns {levels {nid -> 1/0}  state {energized .. cells .. prevclk ..}}.
 proc ::schem::backend::digseq {cir {state {}}} {
     set N [dict get $cir nodes count]
-    set vcc {} ; set static {} ; set relays {} ; set mems {} ; set unsupported {}
+    set vcc {} ; set static {} ; set relays {} ; set mems {} ; set buffers {} ; set unsupported {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -1003,6 +1046,7 @@ proc ::schem::backend::digseq {cir {state {}}} {
                 set cn [dict get $e coil nodes] ; set kn [dict get $e contact nodes]
                 lappend relays [list $nm [dict get $cn c1] [dict get $cn c2] [dict get $kn com] [dict get $kn no] [dict get $kn nc]]
             }
+            buffer     { lappend buffers [list [dict get $e in] [dict get $e oe] [dict get $e out]] }
             meter      { lappend static [list [dict get $nd a] [dict get $nd b]] }
             protective { if {[dict get $e state] in {intact closed}} { lappend static [list [dict get $nd a] [dict get $nd b]] } }
             conductor  { lappend static [list [dict get $nd a] [dict get $nd b]] }
@@ -1025,6 +1069,7 @@ proc ::schem::backend::digseq {cir {state {}}} {
     set cells     [expr {[dict exists $state cells]     ? [dict get $state cells]     : [dict create]}]
     set prevclk   [expr {[dict exists $state prevclk]   ? [dict get $state prevclk]   : [dict create]}]
     set heads     [expr {[dict exists $state heads]     ? [dict get $state heads]     : [dict create]}]
+    set bufout [dict create]      ;# tri-state buffer outputs driving a 1 this cycle
 
     set memout [dict create]      ;# word each memory drives this cycle (fresh, recomputed)
     set memwrote [dict create]    ;# a memory writes at most once per cycle (one edge)
@@ -1050,6 +1095,7 @@ proc ::schem::backend::digseq {cir {state {}}} {
                 if {[lindex $word $i]} { lappend sources [lindex $do $i] }
             }
         }
+        lappend sources {*}[dict keys $bufout]   ;# enabled tri-state buffers driving a 1
         # reachability: HIGH = reachable from a source through closed contacts
         array unset high ; array set high {}
         set queue {}
@@ -1069,6 +1115,13 @@ proc ::schem::backend::digseq {cir {state {}}} {
             if {[info exists high($c1)] != [info exists high($c2)]} { dict set newen $nm 1 }
         }
         if {$newen ne $energized} { set energized $newen ; set changed 1 }
+        # tri-state buffers: drive a 1 onto the output iff enabled and input high
+        set newbo [dict create]
+        foreach b $buffers {
+            lassign $b in oe out
+            if {[info exists high($oe)] && [info exists high($in)]} { dict set newbo $out 1 }
+        }
+        if {$newbo ne $bufout} { set bufout $newbo ; set changed 1 }
         # memory: read the selected cell, latch a write on the rising clock edge.
         # RAM decodes its address pins; a tape uses its (persistent) head, which
         # steps LEFT/RIGHT on the edge -- so its store is unbounded, never 2^N.
@@ -1128,6 +1181,7 @@ proc ::schem::backend::ZigDigital {cir} {
     set N [dict get $cir nodes count]
     set vcc {} ; set se_a {} ; set se_b {} ; set unsupported {}
     set r_c1 {} ; set r_c2 {} ; set r_com {} ; set r_no {} ; set r_nc {}
+    set b_in {} ; set b_oe {} ; set b_out {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -1143,6 +1197,7 @@ proc ::schem::backend::ZigDigital {cir} {
                 lappend r_c1 [dict get $cn c1] ; lappend r_c2 [dict get $cn c2]
                 lappend r_com [dict get $kn com] ; lappend r_no [dict get $kn no] ; lappend r_nc [dict get $kn nc]
             }
+            buffer     { lappend b_in [dict get $e in] ; lappend b_oe [dict get $e oe] ; lappend b_out [dict get $e out] }
             meter      { lappend se_a [dict get $nd a] ; lappend se_b [dict get $nd b] }
             protective { if {[dict get $e state] in {intact closed}} { lappend se_a [dict get $nd a] ; lappend se_b [dict get $nd b] } }
             conductor  { lappend se_a [dict get $nd a] ; lappend se_b [dict get $nd b] }
@@ -1152,18 +1207,19 @@ proc ::schem::backend::ZigDigital {cir} {
     if {[llength $unsupported]} {
         return -code error "zig -digital needs a relay-logic circuit; not digital: [join $unsupported {, }]"
     }
-    set NR [llength $r_c1] ; set NSE [llength $se_a] ; set NV [llength $vcc]
+    set NR [llength $r_c1] ; set NSE [llength $se_a] ; set NV [llength $vcc] ; set NB [llength $b_in]
     set name [dict get $cir name]
     proc A3 {ty vals} { return "\[[llength $vals]\]$ty{[join $vals {, }]}" }
 
     set S {}
     lappend S "// Generated by Schem -- DIGITAL evaluation of \"$name\""
     lappend S "// Derived from the Circuit IR; the .schem schematic is the source."
-    lappend S "// $N node(s), $NR relay(s); boolean cycle eval (verified == the electrical solve)."
+    lappend S "// $N node(s), $NR relay(s), $NB tri-state buffer(s); boolean cycle eval (verified == the electrical solve)."
     lappend S "const std = @import(\"std\");"
-    lappend S "const N: usize = $N; const NR: usize = $NR; const NSE: usize = $NSE; const NV: usize = $NV;"
+    lappend S "const N: usize = $N; const NR: usize = $NR; const NSE: usize = $NSE; const NV: usize = $NV; const NB: usize = $NB;"
     if {$NV}  { lappend S "const vcc = [A3 usize $vcc];" }
     if {$NSE} { lappend S "const se_a = [A3 usize $se_a]; const se_b = [A3 usize $se_b];" }
+    if {$NB}  { lappend S "const b_in = [A3 usize $b_in]; const b_oe = [A3 usize $b_oe]; const b_out = [A3 usize $b_out];" }
     if {$NR}  {
         lappend S "const r_c1 = [A3 usize $r_c1]; const r_c2 = [A3 usize $r_c2];"
         lappend S "const r_com = [A3 usize $r_com]; const r_no = [A3 usize $r_no]; const r_nc = [A3 usize $r_nc];"
@@ -1189,22 +1245,30 @@ proc ::schem::backend::ZigDigital {cir} {
         lappend S "            if (relax(r_com\[r\], t)) changed = true;"
         lappend S "        } }"
     }
+    if {$NB}  {
+        lappend S "        { var b: usize = 0; while (b < NB) : (b += 1) {   // tri-state: drive out=1 when enabled and in=1"
+        lappend S "            if (high\[b_oe\[b\]\] and high\[b_in\[b\]\] and !high\[b_out\[b\]\] and b_out\[b\] != 0) { high\[b_out\[b\]\] = true; changed = true; }"
+        lappend S "        } }"
+    }
     lappend S "    }"
     lappend S "    high\[0\] = false;"
     lappend S "}"
     lappend S "fn settle() void {                         // fixed point over relay state"
-    lappend S "    var pass: usize = 0;"
-    lappend S "    while (pass < 1000) : (pass += 1) {"
-    lappend S "        reach();"
-    lappend S "        var changed = false;"
     if {$NR} {
+        lappend S "    var pass: usize = 0;"
+        lappend S "    while (pass < 1000) : (pass += 1) {"
+        lappend S "        reach();"
+        lappend S "        var changed = false;"
         lappend S "        { var r: usize = 0; while (r < NR) : (r += 1) {"
         lappend S "            const en = high\[r_c1\[r\]\] != high\[r_c2\[r\]\];"
         lappend S "            if (en != energized\[r\]) { energized\[r\] = en; changed = true; }"
         lappend S "        } }"
+        lappend S "        if (!changed) break;"
+        lappend S "    }"
+    } else {
+        # no relays: buffers/memory-out settle entirely within reach()
+        lappend S "    reach();"
     }
-    lappend S "        if (!changed) break;"
-    lappend S "    }"
     lappend S "}"
     lappend S ""
     lappend S "pub fn main() !void {"
@@ -1239,6 +1303,7 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
     set vcc {} ; set se_a {} ; set se_b {} ; set unsupported {}
     set sw_a {} ; set sw_b {} ; set sw_init {} ; set swidx [dict create]
     set r_c1 {} ; set r_c2 {} ; set r_com {} ; set r_no {} ; set r_nc {}
+    set b_in {} ; set b_oe {} ; set b_out {}
     set mems {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
@@ -1259,6 +1324,7 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
                 lappend r_c1 [dict get $cn c1] ; lappend r_c2 [dict get $cn c2]
                 lappend r_com [dict get $kn com] ; lappend r_no [dict get $kn no] ; lappend r_nc [dict get $kn nc]
             }
+            buffer     { lappend b_in [dict get $e in] ; lappend b_oe [dict get $e oe] ; lappend b_out [dict get $e out] }
             meter      { lappend se_a [dict get $nd a] ; lappend se_b [dict get $nd b] }
             protective { if {[dict get $e state] in {intact closed}} { lappend se_a [dict get $nd a] ; lappend se_b [dict get $nd b] } }
             conductor  { lappend se_a [dict get $nd a] ; lappend se_b [dict get $nd b] }
@@ -1269,7 +1335,7 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
     if {[llength $unsupported]} {
         return -code error "clocked digital mode needs a digital (relay/memory) circuit; not digital: [join $unsupported {, }]"
     }
-    set NR [llength $r_c1] ; set NSE [llength $se_a] ; set NV [llength $vcc] ; set NS [llength $sw_a]
+    set NR [llength $r_c1] ; set NSE [llength $se_a] ; set NV [llength $vcc] ; set NS [llength $sw_a] ; set NB [llength $b_in]
     set name [dict get $cir name]
     set arr {{ty vals} {return "\[[llength $vals]\]$ty{[join $vals {, }]}"}}
 
@@ -1285,13 +1351,14 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
     set S {}
     lappend S "// Generated by Schem -- CLOCKED DIGITAL evaluation of \"$name\""
     lappend S "// Derived from the Circuit IR; the .schem schematic is the source."
-    lappend S "// $N node(s), $NR relay(s), [llength $mems] memory(ies); $cycles clock cycle(s)."
+    lappend S "// $N node(s), $NR relay(s), $NB tri-state buffer(s), [llength $mems] memory(ies); $cycles clock cycle(s)."
     lappend S "// Sequential boolean eval, state carried across cycles (verified == the engine)."
     lappend S "const std = @import(\"std\");"
-    lappend S "const N: usize = $N; const NR: usize = $NR; const NSE: usize = $NSE; const NV: usize = $NV; const NS: usize = $NS;"
+    lappend S "const N: usize = $N; const NR: usize = $NR; const NSE: usize = $NSE; const NV: usize = $NV; const NS: usize = $NS; const NB: usize = $NB;"
     lappend S "const CYCLES: usize = $cycles;"
     if {$NV}  { lappend S "const vcc = [apply $arr usize $vcc];" }
     if {$NSE} { lappend S "const se_a = [apply $arr usize $se_a]; const se_b = [apply $arr usize $se_b];" }
+    if {$NB}  { lappend S "const b_in = [apply $arr usize $b_in]; const b_oe = [apply $arr usize $b_oe]; const b_out = [apply $arr usize $b_out];" }
     if {$NS}  {
         lappend S "const sw_a = [apply $arr usize $sw_a]; const sw_b = [apply $arr usize $sw_b];"
         lappend S "var sw_state = \[NS\]bool{[join $sw_init {, }]};"
@@ -1353,6 +1420,11 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
         lappend S "            if (relax(r_com\[r\], t)) changed = true;"
         lappend S "        } }"
     }
+    if {$NB}  {
+        lappend S "        { var b: usize = 0; while (b < NB) : (b += 1) {   // tri-state: drive out=1 when enabled and in=1"
+        lappend S "            if (high\[b_oe\[b\]\] and high\[b_in\[b\]\] and !high\[b_out\[b\]\] and b_out\[b\] != 0) { high\[b_out\[b\]\] = true; changed = true; }"
+        lappend S "        } }"
+    }
     # data-out pins driving 1 are sources too: re-assert them inside the loop so
     # newly-decoded reads propagate without waiting for the next reach()
     set mi 0
@@ -1371,6 +1443,7 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
     lappend S "    while (pass < 1000) : (pass += 1) {"
     lappend S "        reach();"
     lappend S "        var changed = false;"
+    lappend S "        _ = &changed;   // (buffers/reads settle within reach(); relays/memory may set this)"
     if {$NR} {
         lappend S "        { var r: usize = 0; while (r < NR) : (r += 1) {"
         lappend S "            const en = high\[r_c1\[r\]\] != high\[r_c2\[r\]\];"

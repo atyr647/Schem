@@ -177,6 +177,20 @@ oo::define ::schem::Schematic {
                             p [my NodeOf $name.DO$i] q 0 emf $bit rs $ro]
                     }
                 }
+                buffer {
+                    # A tri-state buffer drives its output ONLY when enabled
+                    # (output-enable high), to vhigh/0 by its input, through the
+                    # output resistance.  When disabled it is high-impedance --
+                    # no branch at all -- so other drivers can own the bus.  The
+                    # enable/drive decision is the fixed point's, held in
+                    # Result bufdrv ({} = Hi-Z, else the driven voltage).
+                    if {[dict exists $Result bufdrv $name]} {
+                        lappend br [dict create owner $name.out kind bufout \
+                            p [my NodeOf $name.out] q 0 \
+                            emf [dict get $Result bufdrv $name] \
+                            rs [expr {double([dict get $pr rout])}]]
+                    }
+                }
             }
         }
         return $br
@@ -337,6 +351,13 @@ oo::define ::schem::Schematic {
                         apply $stampG [my NodeOf $name.$pin] 0 $gin
                     }
                 }
+                buffer {
+                    # in / oe are high-impedance senses (weak pull-downs); out
+                    # is driven by a branch (only when enabled), never pulled.
+                    set gin [expr {1.0/double([dict get $pr rin])}]
+                    apply $stampG [my NodeOf $name.in] 0 $gin
+                    apply $stampG [my NodeOf $name.oe] 0 $gin
+                }
             }
         }
 
@@ -452,10 +473,12 @@ oo::define ::schem::Schematic {
         # energised stays energised across solves until something resets it.
         set energized $Energized
         set memout [dict create] ; set memwrote [dict create]
+        set bufdrv [dict create]
         set seen [dict create]
         for {set outer 0} {$outer < 200} {incr outer} {
             dict set Result energized $energized
             dict set Result memout $memout
+            dict set Result bufdrv $bufdrv
             if {[catch {my SolveOP $state} res opts]} {
                 if {[lrange [dict get $opts -errorcode] 0 1] eq {SCHEM SINGULAR}} {
                     lappend Faults [dict create kind short \
@@ -472,12 +495,13 @@ oo::define ::schem::Schematic {
             my StoreResult $sol $branches
             set chD [my UpdateDevices $branches energized]
             set chM [my UpdateMemory memout memwrote]
-            if {!$chD && !$chM} break
+            set chB [my UpdateBuffers bufdrv]
+            if {!$chD && !$chM && !$chB} break
 
             # Oscillation: if device state recurs without settling, the
             # circuit is astable (e.g. a buzzer).  Stop and note it -- a
             # stable DC operating point does not exist; use transient.
-            set key [list [lsort [dict keys $energized]] $memout]
+            set key [list [lsort [dict keys $energized]] $memout $bufdrv]
             if {[dict exists $seen $key]} {
                 lappend Faults [dict create kind astable \
                     detail "no stable DC state (relay feedback oscillates): use transient analysis (run)"]
@@ -696,6 +720,31 @@ oo::define ::schem::Schematic {
 
     # MemBits / MemAddr -- read a memory's pins from the solved node voltages.
     method MemHigh {name pin thr} { return [expr {[dict get $Result vmap $name.$pin] > $thr}] }
+
+    # UpdateBuffers -- tri-state buffers in the fixed point.  A buffer drives its
+    # output (to vhigh/0 by its input) only while its output-enable is high; when
+    # disabled it is high-impedance (no entry -> no branch), so another driver
+    # owns the shared bus.  bufdrv maps an enabled buffer -> its driven voltage.
+    # Returns 1 if any buffer's drive state changed (so the fixed point re-solves).
+    method UpdateBuffers {bufdrvVar} {
+        upvar 1 $bufdrvVar bufdrv
+        if {![dict exists $Result vmap]} { return 0 }
+        set changed 0
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] ne "buffer"} continue
+            set pr [dict get $comp params]
+            set thr [expr {double([dict get $pr vhigh]) / 2.0}]
+            if {[my MemHigh $name oe $thr]} {
+                set v [expr {[my MemHigh $name in $thr] ? double([dict get $pr vhigh]) : 0.0}]
+                if {![dict exists $bufdrv $name] || [dict get $bufdrv $name] != $v} {
+                    dict set bufdrv $name $v ; set changed 1
+                }
+            } elseif {[dict exists $bufdrv $name]} {
+                dict unset bufdrv $name ; set changed 1   ;# released -> Hi-Z
+            }
+        }
+        return $changed
+    }
 
     # UpdateMemory -- a memory chip in the fixed point: drive its data-out pins
     # with the addressed cell (combinational read), and on a rising clock edge

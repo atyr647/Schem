@@ -191,6 +191,13 @@ oo::define ::schem::Schematic {
                         address $anodes di $dinodes do $donodes move $move \
                         we [dict get $nd WE] clk [dict get $nd CLK] gnd [dict get $nd GND]]
                 }
+                buffer {
+                    lappend elements [dict create name $name type buffer class buffer \
+                        in [dict get $nd in] oe [dict get $nd oe] out [dict get $nd out] \
+                        vhigh [expr {double([dict get $pr vhigh])}] \
+                        rout [expr {double([dict get $pr rout])}] \
+                        rin [expr {double([dict get $pr rin])}]]
+                }
                 ground - bus - junction {
                     # Pure connectivity: already folded into the node map.
                 }
@@ -282,6 +289,9 @@ oo::define ::schem::Schematic {
             conductor {
                 set nd [dict get $e nodes]
                 return "$head a=[apply $N [dict get $nd a]] b=[apply $N [dict get $nd b]]  awg=[dict get $e awg] len=[dict get $e len] r=[dict get $e r] ampacity=[dict get $e ampacity]"
+            }
+            buffer {
+                return "$head in=[apply $N [dict get $e in]] oe=[apply $N [dict get $e oe]] out=[apply $N [dict get $e out]]  vhigh=[dict get $e vhigh] rout=[dict get $e rout] (tri-state)"
             }
             memory {
                 set fmt {l {join [lmap n $l {expr {"N$n"}}] ","}}
