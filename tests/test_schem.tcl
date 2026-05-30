@@ -643,6 +643,35 @@ test memory-fresh-reads-zero {a powered-up memory drives all data-out lines low}
     list [format %.2f [$s probe M.DO0]] [format %.2f [$s probe M.DO1]]
 } -cleanup {$s destroy} -result {0.00 0.00}
 
+test memory-tape-pins {a tape memory has move pins instead of address pins} -setup {
+    set s [schem::new m] ; $s add memory T -mode tape -dbits 4
+} -body {
+    set t [$s terminals T]
+    list [expr {"LEFT" in $t}] [expr {"RIGHT" in $t}] [expr {"A0" in $t}] [expr {"DO3" in $t}]
+} -cleanup {$s destroy} -result {1 1 0 1}
+
+test memory-tape-turing {an unbounded tape: write moving right, read back moving left} -setup {
+    set s [schem::new m]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add memory T -mode tape -dbits 4 ; $s wire T.GND GND.t
+    foreach p {DI0 DI1 DI2 DI3 WE CLK LEFT RIGHT} {
+        $s add switch S_$p -state open ; $s wire VCC.pos S_$p.a ; $s wire S_$p.b T.$p
+    }
+} -body {
+    proc ::sbit {s n v} { for {set i 0} {$i<$n} {incr i} { if {[expr {($v>>$i)&1}]} {$s close S_DI$i} else {$s open S_DI$i} } }
+    proc ::tk {s} { $s open S_CLK ; $s solve ; $s close S_CLK ; $s solve ; $s open S_CLK ; $s solve }
+    proc ::rd {s n} { set v 0 ; for {set i 0} {$i<$n} {incr i} { if {[$s probe T.DO$i] > 6} { set v [expr {$v|(1<<$i)}] } } ; return $v }
+    # write 1,2,3 stepping the head right each clock
+    $s close S_WE ; $s close S_RIGHT
+    foreach v {1 2 3} { sbit $s 4 $v ; tk $s }
+    $s open S_WE ; $s open S_RIGHT ; sbit $s 4 0
+    # read back stepping left -- the head retraces, the sparse cells survive
+    $s close S_LEFT
+    set back {} ; foreach _ {1 2 3} { tk $s ; lappend back [rd $s 4] }
+    rename ::sbit {} ; rename ::tk {} ; rename ::rd {}
+    set back
+} -cleanup {$s destroy} -result {3 2 1}
+
 test memory-write-read {a clocked write seals a word in; it reads back later} -setup {
     set s [schem::new m]
     $s add battery B -emf 12 ; $s add ground G ; $s add memory M -abits 2 -dbits 2

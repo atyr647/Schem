@@ -327,13 +327,15 @@ oo::define ::schem::Schematic {
                 memory {
                     # The address / data-in / control pins are high-impedance
                     # senses: a weak pull-down so an undriven pin reads LOW and
-                    # the chip presents a real (large) input resistance.
+                    # the chip presents a real (large) input resistance.  Every
+                    # pin except the driven data-out lines and ground is sensed
+                    # this way (so both RAM address pins and a tape's LEFT/RIGHT
+                    # move pins read correctly).
                     set gin [expr {1.0/double([dict get $pr rin])}]
-                    set ab [dict get $pr abits] ; set db [dict get $pr dbits]
-                    for {set i 0} {$i < $ab} {incr i} { apply $stampG [my NodeOf $name.A$i] 0 $gin }
-                    for {set i 0} {$i < $db} {incr i} { apply $stampG [my NodeOf $name.DI$i] 0 $gin }
-                    apply $stampG [my NodeOf $name.WE] 0 $gin
-                    apply $stampG [my NodeOf $name.CLK] 0 $gin
+                    foreach pin [my terminals $name] {
+                        if {[string match DO* $pin] || $pin eq "GND"} continue
+                        apply $stampG [my NodeOf $name.$pin] 0 $gin
+                    }
                 }
             }
         }
@@ -706,26 +708,42 @@ oo::define ::schem::Schematic {
         dict for {name comp} $Comp {
             if {[dict get $comp type] ne "memory"} continue
             set pr [dict get $comp params]
-            set ab [dict get $pr abits] ; set db [dict get $pr dbits]
+            set db [dict get $pr dbits] ; set mode [dict get $pr mode]
             set thr [expr {double([dict get $pr vhigh]) / 2.0}]
-            set addr 0
-            for {set i 0} {$i < $ab} {incr i} {
-                if {[my MemHigh $name A$i $thr]} { set addr [expr {$addr | (1 << $i)}] }
-            }
             set cells [expr {[dict exists $Mem $name cells] ? [dict get $Mem $name cells] : [dict create]}]
             set clk [my MemHigh $name CLK $thr] ; set we [my MemHigh $name WE $thr]
             set prevclk [expr {[dict exists $Mem $name prevclk] ? [dict get $Mem $name prevclk] : 0}]
-            # rising-edge write (once per solve), RAM only
-            if {[dict get $pr mode] eq "ram" && ![dict exists $memwrote $name] \
-                && $clk && $we && !$prevclk} {
-                set di {}
-                for {set i 0} {$i < $db} {incr i} { lappend di [expr {[my MemHigh $name DI$i $thr] ? 1 : 0}] }
-                dict set cells $addr $di
-                dict set Mem $name cells $cells
-                dict set memwrote $name 1
-                set changed 1
+            # The cell the head/address selects: an integer index into the sparse
+            # store.  RAM decodes its address pins; the tape tracks a head that
+            # moves on the clock -- so its store is unbounded, never 2^N cells.
+            if {$mode eq "tape"} {
+                set idx [expr {[dict exists $Mem $name head] ? [dict get $Mem $name head] : 0}]
+            } else {
+                set idx 0 ; set ab [dict get $pr abits]
+                for {set i 0} {$i < $ab} {incr i} {
+                    if {[my MemHigh $name A$i $thr]} { set idx [expr {$idx | (1 << $i)}] }
+                }
             }
-            set word [expr {[dict exists $cells $addr] ? [dict get $cells $addr] : [lrepeat $db 0]}]
+            # rising-edge action (once per solve): write DI to the selected cell
+            # when WE; a tape then steps its head one cell LEFT/RIGHT.
+            if {![dict exists $memwrote $name] && $clk && !$prevclk} {
+                if {$we} {
+                    set di {}
+                    for {set i 0} {$i < $db} {incr i} { lappend di [expr {[my MemHigh $name DI$i $thr] ? 1 : 0}] }
+                    dict set cells $idx $di
+                    dict set Mem $name cells $cells
+                    set changed 1
+                }
+                if {$mode eq "tape"} {
+                    set nidx $idx
+                    if {[my MemHigh $name RIGHT $thr]} { incr nidx }
+                    if {[my MemHigh $name LEFT  $thr]} { incr nidx -1 }
+                    dict set Mem $name head $nidx
+                    set idx $nidx
+                }
+                dict set memwrote $name 1
+            }
+            set word [expr {[dict exists $cells $idx] ? [dict get $cells $idx] : [lrepeat $db 0]}]
             if {![dict exists $memout $name] || [dict get $memout $name] ne $word} {
                 dict set memout $name $word ; set changed 1
             }

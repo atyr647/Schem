@@ -174,17 +174,21 @@ oo::define ::schem::Schematic {
                 }
                 memory {
                     set stateful 1
-                    set ab [dict get $pr abits] ; set db [dict get $pr dbits]
+                    set mode [dict get $pr mode] ; set db [dict get $pr dbits]
                     set anodes {} ; set dinodes {} ; set donodes {}
+                    set ab [expr {$mode eq "tape" ? 0 : [dict get $pr abits]}]
                     for {set i 0} {$i < $ab} {incr i} { lappend anodes  [dict get $nd A$i] }
                     for {set i 0} {$i < $db} {incr i} { lappend dinodes [dict get $nd DI$i] }
                     for {set i 0} {$i < $db} {incr i} { lappend donodes [dict get $nd DO$i] }
+                    # tape: head moves LEFT/RIGHT over a sparse, unbounded store.
+                    set move [expr {$mode eq "tape" ? \
+                        [dict create left [dict get $nd LEFT] right [dict get $nd RIGHT]] : {}}]
                     lappend elements [dict create name $name type memory class memory \
-                        abits $ab dbits $db mode [dict get $pr mode] \
+                        abits $ab dbits $db mode $mode \
                         vhigh [expr {double([dict get $pr vhigh])}] \
                         rout [expr {double([dict get $pr rout])}] \
                         rin [expr {double([dict get $pr rin])}] \
-                        address $anodes di $dinodes do $donodes \
+                        address $anodes di $dinodes do $donodes move $move \
                         we [dict get $nd WE] clk [dict get $nd CLK] gnd [dict get $nd GND]]
                 }
                 ground - bus - junction {
@@ -281,7 +285,10 @@ oo::define ::schem::Schematic {
             }
             memory {
                 set fmt {l {join [lmap n $l {expr {"N$n"}}] ","}}
-                return "$head [dict get $e abits]x[dict get $e dbits] mode=[dict get $e mode] addr\[[apply $fmt [dict get $e address]]\] di\[[apply $fmt [dict get $e di]]\] do\[[apply $fmt [dict get $e do]]\] we=[apply $N [dict get $e we]] clk=[apply $N [dict get $e clk]] gnd=[apply $N [dict get $e gnd]] vhigh=[dict get $e vhigh]"
+                set sel [expr {[dict get $e mode] eq "tape" ? \
+                    "head\[L=[apply $N [dict get $e move left]] R=[apply $N [dict get $e move right]]\]" : \
+                    "addr\[[apply $fmt [dict get $e address]]\]"}]
+                return "$head [dict get $e abits]x[dict get $e dbits] mode=[dict get $e mode] $sel di\[[apply $fmt [dict get $e di]]\] do\[[apply $fmt [dict get $e do]]\] we=[apply $N [dict get $e we]] clk=[apply $N [dict get $e clk]] gnd=[apply $N [dict get $e gnd]] vhigh=[dict get $e vhigh]"
             }
         }
         return "$head ?"

@@ -118,6 +118,10 @@ proc ::schem::backend::LowerDC {cir} {
                 foreach d [dict get $e di]      { lappend conds [list $d 0 $gin $nm.in] }
                 lappend conds [list [dict get $e we]  0 $gin $nm.in]
                 lappend conds [list [dict get $e clk] 0 $gin $nm.in]
+                if {[dict get $e mode] eq "tape"} {
+                    lappend conds [list [dict get $e move left]  0 $gin $nm.in]
+                    lappend conds [list [dict get $e move right] 0 $gin $nm.in]
+                }
                 foreach d [dict get $e do] { lappend branches [list $d 0 0.0 $ro $nm.do] }
             }
         }
@@ -1003,9 +1007,12 @@ proc ::schem::backend::digseq {cir {state {}}} {
             protective { if {[dict get $e state] in {intact closed}} { lappend static [list [dict get $nd a] [dict get $nd b]] } }
             conductor  { lappend static [list [dict get $nd a] [dict get $nd b]] }
             memory {
+                set mv [dict get $e move]
                 lappend mems [list [dict get $e name] [dict get $e abits] [dict get $e dbits] \
                     [dict get $e mode] [dict get $e address] [dict get $e di] [dict get $e do] \
-                    [dict get $e we] [dict get $e clk]]
+                    [dict get $e we] [dict get $e clk] \
+                    [expr {$mv ne "" ? [dict get $mv left] : 0}] \
+                    [expr {$mv ne "" ? [dict get $mv right] : 0}]]
             }
             default    { lappend unsupported "$nm ([dict get $e type])" }
         }
@@ -1017,6 +1024,7 @@ proc ::schem::backend::digseq {cir {state {}}} {
     set energized [expr {[dict exists $state energized] ? [dict get $state energized] : [dict create]}]
     set cells     [expr {[dict exists $state cells]     ? [dict get $state cells]     : [dict create]}]
     set prevclk   [expr {[dict exists $state prevclk]   ? [dict get $state prevclk]   : [dict create]}]
+    set heads     [expr {[dict exists $state heads]     ? [dict get $state heads]     : [dict create]}]
 
     set memout [dict create]      ;# word each memory drives this cycle (fresh, recomputed)
     set memwrote [dict create]    ;# a memory writes at most once per cycle (one edge)
@@ -1061,21 +1069,33 @@ proc ::schem::backend::digseq {cir {state {}}} {
             if {[info exists high($c1)] != [info exists high($c2)]} { dict set newen $nm 1 }
         }
         if {$newen ne $energized} { set energized $newen ; set changed 1 }
-        # memory: read the addressed cell, latch a write on the rising clock edge
+        # memory: read the selected cell, latch a write on the rising clock edge.
+        # RAM decodes its address pins; a tape uses its (persistent) head, which
+        # steps LEFT/RIGHT on the edge -- so its store is unbounded, never 2^N.
         foreach m $mems {
-            lassign $m nm ab db mode addr di do we clk
-            set a 0
-            for {set i 0} {$i < $ab} {incr i} { if {[info exists high([lindex $addr $i])]} { set a [expr {$a | (1 << $i)}] } }
+            lassign $m nm ab db mode addr di do we clk left right
+            if {$mode eq "tape"} {
+                set idx [expr {[dict exists $heads $nm] ? [dict get $heads $nm] : 0}]
+            } else {
+                set idx 0
+                for {set i 0} {$i < $ab} {incr i} { if {[info exists high([lindex $addr $i])]} { set idx [expr {$idx | (1 << $i)}] } }
+            }
             set clkH [info exists high($clk)] ; set weH [info exists high($we)]
             set pc [expr {[dict exists $prevclk $nm] ? [dict get $prevclk $nm] : 0}]
-            if {$mode eq "ram" && ![dict exists $memwrote $nm] && $clkH && $weH && !$pc} {
-                set d {}
-                for {set i 0} {$i < $db} {incr i} { lappend d [expr {[info exists high([lindex $di $i])] ? 1 : 0}] }
-                dict set cells $nm $a $d
+            if {![dict exists $memwrote $nm] && $clkH && !$pc} {
+                if {$weH} {
+                    set d {}
+                    for {set i 0} {$i < $db} {incr i} { lappend d [expr {[info exists high([lindex $di $i])] ? 1 : 0}] }
+                    dict set cells $nm $idx $d ; set changed 1
+                }
+                if {$mode eq "tape"} {
+                    if {[info exists high($right)]} { incr idx }
+                    if {[info exists high($left)]}  { incr idx -1 }
+                    dict set heads $nm $idx
+                }
                 dict set memwrote $nm 1
-                set changed 1
             }
-            set word [expr {[dict exists $cells $nm $a] ? [dict get $cells $nm $a] : [lrepeat $db 0]}]
+            set word [expr {[dict exists $cells $nm $idx] ? [dict get $cells $nm $idx] : [lrepeat $db 0]}]
             if {![dict exists $memout $nm] || [dict get $memout $nm] ne $word} {
                 dict set memout $nm $word ; set changed 1
             }
@@ -1090,7 +1110,7 @@ proc ::schem::backend::digseq {cir {state {}}} {
     set levels [dict create 0 0]
     for {set i 1} {$i <= $N} {incr i} { dict set levels $i [expr {[info exists high($i)] ? 1 : 0}] }
     return [dict create levels $levels \
-        state [dict create energized $energized cells $cells prevclk $prevclk]]
+        state [dict create energized $energized cells $cells prevclk $prevclk heads $heads]]
 }
 
 # ====================================================================
@@ -1281,12 +1301,23 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
         lappend S "const r_com = [apply $arr usize $r_com]; const r_no = [apply $arr usize $r_no]; const r_nc = [apply $arr usize $r_nc];"
         lappend S "var energized = \[_\]bool{false} ** NR;"
     }
-    # per-memory persistent storage (unrolled: widths are known at emit time)
+    # per-memory persistent storage (unrolled: widths are known at emit time).
+    # RAM: 2^abits cells.  Tape: a window of 2*CYCLES+1 cells with the head at
+    # the centre -- in N cycles the head moves at most N from the origin, so this
+    # bounded window faithfully compiles any N-cycle run of the unbounded tape.
     set mi 0
     foreach e $mems {
-        set ab [dict get $e abits] ; set db [dict get $e dbits] ; set sz [expr {1 << $ab}]
-        lappend S "// memory [dict get $e name]: $sz words x $db bits, mode [dict get $e mode]"
-        lappend S "var m${mi}_cells = \[_\]\[$db\]bool{\[_\]bool{false} ** $db} ** $sz;"
+        set db [dict get $e dbits]
+        if {[dict get $e mode] eq "tape"} {
+            set sz [expr {2*$cycles + 1}]
+            lappend S "// memory [dict get $e name]: tape, $db bits, $sz-cell window (head at centre)"
+            lappend S "var m${mi}_cells = \[_\]\[$db\]bool{\[_\]bool{false} ** $db} ** $sz;"
+            lappend S "var m${mi}_head: usize = $cycles;"
+        } else {
+            set sz [expr {1 << [dict get $e abits]}]
+            lappend S "// memory [dict get $e name]: $sz words x $db bits, mode ram"
+            lappend S "var m${mi}_cells = \[_\]\[$db\]bool{\[_\]bool{false} ** $db} ** $sz;"
+        }
         lappend S "var m${mi}_out = \[_\]bool{false} ** $db;"
         lappend S "var m${mi}_prevclk: bool = false;"
         lappend S "var m${mi}_wrote: bool = false;"
@@ -1352,20 +1383,36 @@ proc ::schem::backend::ZigDigitalSeq {cir cycles {events {}}} {
         set ab [dict get $e abits] ; set db [dict get $e dbits]
         set addr [dict get $e address] ; set di [dict get $e di] ; set do [dict get $e do]
         set we [dict get $e we] ; set clk [dict get $e clk]
-        set ram [expr {[dict get $e mode] eq "ram"}]
-        lappend S "        { var addr: usize = 0;"
-        for {set i 0} {$i < $ab} {incr i} { lappend S "          if (high\[[lindex $addr $i]\]) addr |= [expr {1 << $i}];" }
-        lappend S "          const clkH = high\[$clk\]; const weH = high\[$we\];"
-        if {$ram} {
+        if {[dict get $e mode] eq "tape"} {
+            set mv [dict get $e move]
+            lappend S "        { var addr: usize = m${mi}_head;"
+            lappend S "          const clkH = high\[$clk\]; const weH = high\[$we\];"
+            lappend S "          if (!m${mi}_wrote and clkH and !m${mi}_prevclk) {"
+            lappend S "              if (weH) {"
+            for {set i 0} {$i < $db} {incr i} { lappend S "                  m${mi}_cells\[addr\]\[$i\] = high\[[lindex $di $i]\];" }
+            lappend S "              }"
+            lappend S "              if (high\[[dict get $mv right]\]) m${mi}_head += 1;"
+            lappend S "              if (high\[[dict get $mv left]\]) m${mi}_head -= 1;"
+            lappend S "              addr = m${mi}_head;"
+            lappend S "              m${mi}_wrote = true; changed = true;"
+            lappend S "          }"
+            for {set i 0} {$i < $db} {incr i} {
+                lappend S "          if (m${mi}_out\[$i\] != m${mi}_cells\[addr\]\[$i\]) { m${mi}_out\[$i\] = m${mi}_cells\[addr\]\[$i\]; changed = true; }"
+            }
+            lappend S "        }"
+        } else {
+            lappend S "        { var addr: usize = 0;"
+            for {set i 0} {$i < $ab} {incr i} { lappend S "          if (high\[[lindex $addr $i]\]) addr |= [expr {1 << $i}];" }
+            lappend S "          const clkH = high\[$clk\]; const weH = high\[$we\];"
             lappend S "          if (!m${mi}_wrote and clkH and weH and !m${mi}_prevclk) {"
             for {set i 0} {$i < $db} {incr i} { lappend S "              m${mi}_cells\[addr\]\[$i\] = high\[[lindex $di $i]\];" }
             lappend S "              m${mi}_wrote = true; changed = true;"
             lappend S "          }"
+            for {set i 0} {$i < $db} {incr i} {
+                lappend S "          if (m${mi}_out\[$i\] != m${mi}_cells\[addr\]\[$i\]) { m${mi}_out\[$i\] = m${mi}_cells\[addr\]\[$i\]; changed = true; }"
+            }
+            lappend S "        }"
         }
-        for {set i 0} {$i < $db} {incr i} {
-            lappend S "          if (m${mi}_out\[$i\] != m${mi}_cells\[addr\]\[$i\]) { m${mi}_out\[$i\] = m${mi}_cells\[addr\]\[$i\]; changed = true; }"
-        }
-        lappend S "        }"
         incr mi
     }
     lappend S "        if (!changed) break;"

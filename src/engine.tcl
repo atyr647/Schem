@@ -163,11 +163,21 @@ oo::class create ::schem::Schematic {
         return $name
     }
 
-    # MemPins -- the terminal list for a memory of the given width: address in,
-    # data in / data out, write-enable, clock, ground.
+    # MemPins -- the terminal list for a memory of the given width.
+    #   ram  : address in (A0..), data in/out, write-enable, clock, ground.
+    #   tape : an unbounded Turing tape -- no address pins; instead the head
+    #          moves one cell LEFT/RIGHT each clock, over a sparse cell store
+    #          that grows on demand (strict Turing completeness, no 2^N blow-up).
     method MemPins {params} {
         set pins {}
-        set ab [dict get $params abits] ; set db [dict get $params dbits]
+        set db [dict get $params dbits]
+        if {[dict get $params mode] eq "tape"} {
+            for {set i 0} {$i < $db} {incr i} { lappend pins DI$i }
+            for {set i 0} {$i < $db} {incr i} { lappend pins DO$i }
+            lappend pins WE CLK LEFT RIGHT GND
+            return $pins
+        }
+        set ab [dict get $params abits]
         for {set i 0} {$i < $ab} {incr i} { lappend pins A$i }
         for {set i 0} {$i < $db} {incr i} { lappend pins DI$i }
         for {set i 0} {$i < $db} {incr i} { lappend pins DO$i }
@@ -256,8 +266,8 @@ oo::class create ::schem::Schematic {
         }
         dict set Comp $name params [dict replace \
             [dict get $Comp $name params] $key $value]
-        # changing a memory's width regenerates its pins (and the node map)
-        if {[dict get $Comp $name type] eq "memory" && $key in {abits dbits}} {
+        # changing a memory's width or mode regenerates its pins (+ node map)
+        if {[dict get $Comp $name type] eq "memory" && $key in {abits dbits mode}} {
             dict set Comp $name pins [my MemPins [dict get $Comp $name params]]
             set NodeDirty 1
         }

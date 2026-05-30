@@ -38,7 +38,7 @@ re-deriving device physics:
 | `protective` | fuse / breaker | `rating`, `state`, `i2t` |
 | `meter` | ammeter | a 0 V branch |
 | `conductor` | gauged wire | resistance (AWG×len), ampacity |
-| `memory` | RAM / ROM | `abits`/`dbits`, `mode`, address / data-in / data-out / `WE` / `CLK` nodes |
+| `memory` | RAM / ROM / tape | `abits`/`dbits`, `mode`, data-in / data-out / `WE` / `CLK` nodes; RAM carries address pins, a tape carries `LEFT`/`RIGHT` head-move pins (an unbounded store) |
 
 Plus a node table (node 0 = ground), the ports, and `analysis` flags
 (`reactive` / `nonlinear` / `stateful`) so a backend knows what machinery it
@@ -110,10 +110,13 @@ The backends ship today:
     point — reachability from the rails *and* from any memory data-out driving a
     stored 1, relays switching, memory reading its addressed cell and latching a
     write on the rising `CLK` edge — then prints every node's level. This is how
-    the fast boolean backend runs **latches, flip-flops, counters and RAM**: a
-    seal-in relay that was energised stays energised, a written cell keeps its
-    word, exactly as the engine's persistent state does. Verified cycle-for-cycle
-    against the engine (and `digseq`).
+    the fast boolean backend runs **latches, flip-flops, counters, RAM and an
+    unbounded Turing tape**: a seal-in relay that was energised stays energised,
+    a written cell keeps its word, the tape's head retraces over cells that
+    persist, exactly as the engine's persistent state does. (The tape compiles
+    to a window of `2·cycles+1` cells — the head moves at most one cell per
+    cycle, so a finite run needs only finitely many, no gate explosion.)
+    Verified cycle-for-cycle against the engine (and `digseq`).
 - **`dcref`** — a Tcl reference for the *literal* mode: solves the DC operating
   point straight from the IR (the same lowering the emitters use), the oracle
   the literal emitters are checked against.

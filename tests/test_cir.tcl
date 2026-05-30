@@ -258,6 +258,17 @@ test cir-dcref-memory {a memory-containing solve driven only by the IR matches t
     set ok
 } -cleanup {$s destroy} -result 1
 
+test cir-memory-tape-role {a tape memory lowers with head move pins, no address} -setup {
+    set s [schem::new m]
+    $s add battery B -emf 12 ; $s add ground G ; $s add memory T -mode tape -dbits 4
+    $s wire B.neg G.t ; $s wire T.GND G.t
+    set ir [$s compile]
+} -body {
+    set e [lindex [lmap el [dict get $ir elements] {expr {[dict get $el class] eq "memory" ? $el : [continue]}}] 0]
+    list [dict get $e mode] [dict get $e abits] [llength [dict get $e address]] \
+         [expr {[dict exists $e move left] && [dict exists $e move right]}]
+} -cleanup {$s destroy} -result {tape 0 0 1}
+
 # ---- the Zig backend emits the expected program, and refuses the rest -----
 
 test zig-emits-divider {the Zig backend emits a well-formed DC solver for the divider} -setup {
@@ -442,6 +453,32 @@ test digseq-memory {clocked digital reproduces a RAM write/read against the engi
     set ok
 } -result 1
 
+test digseq-tape {clocked digital reproduces an unbounded tape against the engine} -body {
+    set s [schem::new t]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add memory T -mode tape -dbits 4 ; $s wire T.GND GND.t
+    foreach p {DI0 DI1 DI2 DI3 WE CLK LEFT RIGHT} { $s add switch S_$p -state open ; $s wire VCC.pos S_$p.a ; $s wire S_$p.b T.$p }
+    proc ::sb {s n val} { for {set i 0} {$i<$n} {incr i} { if {[expr {($val>>$i)&1}]} {$s close S_DI$i} else {$s open S_DI$i} } }
+    set st {} ; set ok 1
+    proc ::cyc {s stv okv} {
+        upvar 1 $stv st $okv ok
+        $s solve ; set cir [$s compile]
+        set r [schem::backend::digseq $cir $st] ; set st [dict get $r state]
+        set lv [dict get $r levels]
+        dict for {nid terms} [dict get $cir nodes map] {
+            if {$nid==0} continue
+            if {[expr {[$s probe [lindex $terms 0]]>6?1:0}] != [dict get $lv $nid]} { set ok 0 }
+        }
+    }
+    # write 1,2,3 stepping right; read back stepping left -- the head retraces
+    $s close S_WE ; $s close S_RIGHT
+    foreach v {1 2 3} { sb $s 4 $v ; $s open S_CLK ; cyc $s st ok ; $s close S_CLK ; cyc $s st ok }
+    $s open S_CLK ; $s open S_WE ; $s open S_RIGHT ; sb $s 4 0 ; $s close S_LEFT
+    foreach _ {1 2 3} { $s open S_CLK ; cyc $s st ok ; $s close S_CLK ; cyc $s st ok }
+    rename ::sb {} ; rename ::cyc {} ; $s destroy
+    set ok
+} -result 1
+
 test dcref-relay-truthtable {dcref reproduces a relay AND gate's truth table from the IR} -body {
     set res {}
     foreach {a b} {0 0  0 1  1 0  1 1} {
@@ -600,6 +637,24 @@ test zig-seq-memory {compiled clocked digital reproduces a RAM write/read sequen
                    4 {close S_CLK} \
                    5 {open S_CLK} 5 {open S_WE} 5 {open S_DI0} \
                    6 {close S_A0}}
+} -cleanup {$s destroy} -result ok
+
+test zig-seq-tape {compiled clocked digital reproduces an unbounded Turing tape} -constraints zig -setup {
+    set s [schem::new tapeseq]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add memory T -mode tape -dbits 4 ; $s wire T.GND GND.t
+    foreach p {DI0 DI1 WE CLK LEFT RIGHT} { $s add switch S_$p -state open ; $s wire VCC.pos S_$p.a ; $s wire S_$p.b T.$p }
+} -body {
+    # write 1,2,3 stepping the head right, then step left reading back 3,2,1 --
+    # the windowed compiled tape matches the engine's sparse one cycle for cycle.
+    seqMatch $s 12 {0 {close S_WE} 0 {close S_RIGHT} 0 {close S_DI0} \
+                    1 {close S_CLK} \
+                    2 {open S_CLK} 2 {open S_DI0} 2 {close S_DI1} \
+                    3 {close S_CLK} \
+                    4 {open S_CLK} 4 {close S_DI0} 4 {close S_DI1} \
+                    5 {close S_CLK} \
+                    6 {open S_CLK} 6 {open S_WE} 6 {open S_RIGHT} 6 {close S_LEFT} 6 {open S_DI0} 6 {open S_DI1} \
+                    7 {close S_CLK} 8 {open S_CLK} 9 {close S_CLK} 10 {open S_CLK} 11 {close S_CLK}}
 } -cleanup {$s destroy} -result ok
 
 cleanupTests
