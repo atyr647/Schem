@@ -1,7 +1,7 @@
 # Schem ⌁
 
 **A visual electrical programming language, with a working interpreter
-that obeys the fundamental rules of electricity.**
+and compiler that obey the fundamental rules of electricity.**
 
 In Schem the *schematic is the source code*. There are no functions,
 variables, loops, or modules — only electrical parts (batteries, wires,
