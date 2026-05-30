@@ -1,0 +1,181 @@
+#!/usr/bin/env tclsh
+# schem -- command-line front end for the Schem electrical interpreter.
+#
+#   schem run    BUILDER.tcl            build a schematic and print its report
+#   schem save   BUILDER.tcl OUT.schem  build a schematic and save it (binary)
+#   schem open   FILE.schem             open a .schem file in the viewer
+#   schem view   FILE.schem             alias for open
+#   schem edit   [FILE.schem]           open the interactive workbench (editor)
+#   schem validate FILE.schem           run the anti-spaghetti / electrical checks
+#   schem netlist FILE.schem            print the derived netlist / IR (cache)
+#   schem -i                            interactive shell with the API loaded
+#   schem -v                            print version
+#
+# Bare `schem FILE.tcl` is treated as `schem run FILE.tcl` (back-compat).
+#
+# A BUILDER file is a Tcl script that constructs a schematic with the
+# workbench API.  The runner pre-binds `s` to a fresh schematic named after
+# the file, so trivial boards can skip the boilerplate.
+
+set bindir [file dirname [file normalize [info script]]]
+source [file join $bindir .. src schem.tcl]
+catch {fconfigure stdout -encoding utf-8}   ;# box-drawing views need UTF-8
+
+proc usage {} {
+    puts stderr "usage: schem <run|save|open|edit|validate|netlist|ir|emit> ARGS | -i | -v"
+    puts stderr "       schem run     BUILDER.tcl"
+    puts stderr "       schem save    BUILDER.tcl OUT.schem"
+    puts stderr "       schem open    FILE.schem"
+    puts stderr "       schem edit    \[FILE.schem\]"
+    puts stderr "       schem validate FILE.schem"
+    puts stderr "       schem netlist FILE.schem"
+    puts stderr "       schem ir      FILE.schem            (the Circuit IR)"
+    puts stderr "       schem emit    TARGET FILE.schem ?opts?   (TARGET: zig; opts: -digital ?-cycles N -events {..}? | -transient -duration T -dt DT)"
+    exit 2
+}
+
+# ReadKey -- read one key event from stdin, decoding arrow escapes and the
+# common control keys into the tokens EditorSession understands.
+proc ReadKey {} {
+    set c [read stdin 1]
+    if {$c eq ""} { return EOF }
+    scan $c %c code
+    if {$code == 27} {                       ;# ESC -- maybe an arrow
+        set c2 [read stdin 1]
+        if {$c2 eq "\["} {
+            switch -- [read stdin 1] {
+                A {return UP} B {return DOWN} C {return RIGHT} D {return LEFT}
+                default {return ESC}
+            }
+        }
+        return ESC
+    }
+    if {$code == 13 || $code == 10} { return ENTER }
+    if {$code == 127 || $code == 8} { return BACKSPACE }
+    if {$c eq " "} { return SPACE }
+    return $c
+}
+
+# EditLoop -- the terminal front end for the editor.  Renders a full frame,
+# reads a key, feeds it to the session, repeats until quit.  Uses raw mode
+# on a real TTY; degrades to plain byte reads when stdin is a pipe (so the
+# editor can be scripted/tested without a terminal).
+proc EditLoop {ed} {
+    set isTty [expr {![catch {exec stty -g <@stdin} saved]}]
+    if {$isTty} { catch {exec stty raw -echo <@stdin} }
+    fconfigure stdin -translation binary
+    catch {fconfigure stdout -encoding utf-8}
+    while {1} {
+        if {$isTty} { puts -nonewline "\033\[H\033\[2J" }
+        puts [$ed render] ; flush stdout
+        if {[$ed quit?]} break
+        set k [ReadKey]
+        if {$k eq "EOF"} break
+        $ed key $k
+    }
+    if {$isTty} { catch {exec stty $saved <@stdin} }
+}
+
+# RunBuilder -- source a builder file with `s` pre-bound; returns the schematic.
+proc RunBuilder {file} {
+    if {![file readable $file]} { puts stderr "schem: cannot read \"$file\"" ; exit 1 }
+    set name [file rootname [file tail $file]]
+    set name [string map {. _} $name]
+    set ::s [schem::new $name]
+    uplevel #0 [list source $file]
+    return $::s
+}
+
+if {[llength $argv] == 0} { usage }
+set cmd [lindex $argv 0]
+set rest [lrange $argv 1 end]
+
+switch -- $cmd {
+    -v - --version { puts "schem [schem::version]" ; exit 0 }
+
+    -i - --interactive {
+        puts "Schem [schem::version] interactive shell."
+        puts "A schematic `s` is ready.  Try: \$s add battery B -emf 9 ; \$s report"
+        set ::s [schem::new interactive]
+        while {![eof stdin]} {
+            puts -nonewline "schem> " ; flush stdout
+            if {[gets stdin line] < 0} break
+            if {[catch {uplevel #0 $line} res]} { puts "error: $res" } \
+            elseif {$res ne ""} { puts $res }
+        }
+        exit 0
+    }
+
+    save {
+        if {[llength $rest] != 2} { usage }
+        lassign $rest builder out
+        set s [RunBuilder $builder]
+        set n [schem::save $s $out]
+        puts "saved $out ($n bytes, [llength [$s components]] components)"
+        exit 0
+    }
+
+    open - view {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s view]
+        exit 0
+    }
+
+    netlist {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s netlistText]
+        exit 0
+    }
+
+    ir {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s cirText]
+        exit 0
+    }
+
+    emit {
+        if {[llength $rest] < 2} { usage }
+        set s [schem::load [lindex $rest 1]]
+        puts [schem::emit $s [lindex $rest 0] {*}[lrange $rest 2 end]]
+        exit 0
+    }
+
+    validate {
+        if {[llength $rest] != 1} { usage }
+        set s [schem::load [lindex $rest 0]]
+        puts [$s validateText]
+        exit 0
+    }
+
+    edit {
+        if {[llength $rest] > 1} { usage }
+        if {[llength $rest] == 1} {
+            set ed [schem::EditorSession new [schem::load [lindex $rest 0]]]
+            $ed setFile [lindex $rest 0]
+        } else {
+            set ed [schem::EditorSession new]
+        }
+        EditLoop $ed
+        exit 0
+    }
+
+    run {
+        if {[llength $rest] != 1} { usage }
+        set s [RunBuilder [lindex $rest 0]]
+        if {[llength [$s components]] > 0} { puts [$s report] }
+        exit 0
+    }
+
+    default {
+        # Back-compat: `schem FILE.tcl` == `schem run FILE.tcl`.
+        if {[file readable $cmd]} {
+            set s [RunBuilder $cmd]
+            if {[llength [$s components]] > 0} { puts [$s report] }
+            exit 0
+        }
+        usage
+    }
+}
