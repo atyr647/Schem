@@ -5,10 +5,10 @@ that obeys the fundamental rules of electricity.**
 
 In Schem the *schematic is the source code*. There are no functions,
 variables, loops, or modules — only electrical parts (batteries, wires,
-switches, relays, resistors, capacitors, inductors, diodes, fuses,
-breakers, transformers, memory chips, tri-state buffers) wired into circuits. Behavior
-emerges from continuity and current flow, exactly as it does on a real
-workbench.
+switches, relays, resistors, capacitors, inductors, diodes, MOSFETs,
+fuses, breakers, transformers, memory chips, tri-state buffers) wired
+into circuits. Behavior emerges from continuity and current flow,
+exactly as it does on a real workbench.
 
 - **The language definition** lives in [`docs/LANGUAGE.md`](docs/LANGUAGE.md).
 - **The architecture** (source = schematic object model; netlist = derived
@@ -54,9 +54,8 @@ $ schem validate divider.schem    # anti-spaghetti + electrical checks
 
 This is not a drawing that *looks* electrical — every result is computed
 by **Modified Nodal Analysis** with Newton iteration for nonlinear devices
-(diodes) and a fixed-point loop for stateful devices (relays, fuses,
-breakers). Capacitors and inductors are time-stepped with companion
-models.
+(diodes, MOSFETs) and a fixed-point loop for stateful devices (relays, fuses,
+breakers). Capacitors and inductors are time-stepped with companion models.
 
 ---
 
@@ -66,9 +65,11 @@ A Tcl interpreter (Tcl 8.6+, which ships with TclOO):
 
 ```sh
 sudo apt-get install tcl        # Debian/Ubuntu
+brew install tcl-tk             # macOS
 ```
 
-No other dependencies.
+No other runtime dependencies. The optional Zig backend requires Zig 0.13.0
+(see below).
 
 ## Quick start
 
@@ -110,6 +111,55 @@ puts "Vout = [$s probe R1.b] V"     ;# -> 6.0
 puts "I    = [$s current R1] A"     ;# -> 0.003
 ```
 
+## Zig backend (optional)
+
+`schem emit zig` generates self-contained Zig programs that reproduce the
+full DC, transient, or digital solve — no Tcl interpreter required at run
+time. The emitted programs are human-readable, single-file, and build with
+`zig run`.
+
+**Schem targets Zig 0.13.0.** Download it from
+[ziglang.org/download](https://ziglang.org/download/) and either put `zig`
+on your `PATH` or point the `SCHEM_ZIG` environment variable at the binary:
+
+```sh
+# Linux example
+wget https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+tar xf zig-linux-x86_64-0.13.0.tar.xz
+export SCHEM_ZIG=$PWD/zig-linux-x86_64-0.13.0/zig
+
+# macOS example
+wget https://ziglang.org/download/0.13.0/zig-macos-aarch64-0.13.0.tar.xz
+tar xf zig-macos-aarch64-0.13.0.tar.xz
+export SCHEM_ZIG=$PWD/zig-macos-aarch64-0.13.0/zig
+```
+
+With a toolchain present, the 19 compile-and-run tests in `test_cir.tcl`
+run automatically; without one they skip cleanly and the remaining 139
+tests are unaffected.
+
+```sh
+# Emit and run a Zig DC solver directly:
+source src/schem.tcl
+# ... build circuit ...
+set zig_src [schem::emit $s zig]          ;# Zig source as a string
+# or: schem emit zig examples/voltage_divider.schem.tcl > divider.zig
+# then: zig run divider.zig
+```
+
+Four emitter modes are available:
+
+| Call                                         | What it emits                                                         |
+|----------------------------------------------|-----------------------------------------------------------------------|
+| `schem emit zig FILE`                        | Full DC operating point (MNA + Newton for diodes/MOSFETs + fixed-point for relays) |
+| `schem emit zig FILE -transient -duration T -dt DT` | Time-domain stepper (RC/RL companions, Newton each step, timed events) |
+| `schem emit zig FILE -digital`               | Boolean cycle evaluator — verified identical to the electrical solve  |
+| `schem emit zig FILE -digital -cycles N -events {…}` | Clocked digital: relay and memory state carried across cycles (latches, counters, RAM) |
+
+All emitted programs are verified node-for-node and cycle-for-cycle
+against the Tcl engine. See [`docs/IR.md`](docs/IR.md) for the full
+architecture.
+
 ## What it gets right (the physics)
 
 The regression suite in [`tests/test_schem.tcl`](tests/test_schem.tcl)
@@ -123,6 +173,7 @@ checks each fundamental rule against a hand-computed value:
 | Continuity                 | an open switch carries no current                 |
 | Conditional routing        | a relay coil closes an isolated contact (no `if`) |
 | One-way flow               | a diode conducts forward (~0.7 V), blocks reverse |
+| MOSFET switching           | an NMOS gate above threshold pulls drain to GND; below threshold the drain floats high (PMOS inverts) |
 | Irreversible faults        | a fuse blows on over-current and cannot reset     |
 | Resettable limits          | a breaker trips on over-current and resets        |
 | Short-circuit detection    | an ideal short across a source is reported        |
@@ -147,7 +198,7 @@ checks each fundamental rule against a hand-computed value:
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 | **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
-Run them (153 tests total):
+Run them (158 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 50: the electrical laws + device realism + memory (RAM + Turing tape) + tri-state buses
@@ -157,8 +208,11 @@ $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 $ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
 $ tclsh tests/test_catalog.tcl   #  9: register, adder, counter, decoder, selector, accumulator, sequencer, computer
-$ tclsh tests/test_cir.tcl       # 43: circuit IR + Zig/dcref/digref/digseq (literal, digital & clocked-digital; compiled & run vs the engine)
+$ tclsh tests/test_cir.tcl       # 48: circuit IR + Zig/dcref/digref/digseq backends (DC/transient/digital/clocked; MOSFETs; compiled & run vs the engine)
 ```
+
+The 19 Zig compile-and-run tests in `test_cir.tcl` require Zig 0.13.0 (see
+above); they skip cleanly when no toolchain is present.
 
 ## Examples
 
@@ -189,6 +243,7 @@ docs/LANGUAGE.md      the language definition (the manifesto / spec)
 docs/ROADMAP.md       architecture: source object model, derived netlist
 docs/FORMAT.md        the binary .schem project file
 docs/INTERPRETER.md   engine internals + full API reference
+docs/IR.md            Circuit IR + interchangeable backends (Zig, dcref, digref, digseq)
 src/schem.tcl         package entry point
 src/solver.tcl        dense linear solver (Gaussian elimination)
 src/engine.tcl        schematic object model + component metadata
@@ -198,14 +253,20 @@ src/hierarchy.tcl     Component → Circuit → Panel → Grid
 src/format.tcl        binary .schem save / load
 src/netlist.tcl       derived netlist / IR (build cache)
 src/compile.tcl       the Circuit IR (lowered, backend-agnostic compile target)
-src/backend.tcl       interchangeable backends over the IR (zig, dcref)
+src/backend.tcl       interchangeable backends over the IR (zig, dcref, digref, digseq)
 src/render.tcl        the viewer (draws the schematic as a wired diagram)
 src/validate.tcl      anti-spaghetti + electrical validation
 src/editor.tcl        the interactive workbench (EditorSession)
 lib/logic.tcl         relay standard-cell library (gates, adder, latch)
 lib/standard.tcl      standard panel circuits (timers, one-shot, debounce, ...)
 lib/catalog.tcl       circuit catalog (register, adder, counter, decoder, selector)
-bin/schem             CLI front end (run/save/open/edit/validate/netlist)
-examples/             runnable schematics
-tests/                regression suites (engine, artifact, tools, logic, sequential)
+bin/schem             CLI front end (run/save/open/edit/validate/netlist/ir/emit)
+examples/             runnable schematics and generated Zig samples
+tests/                regression suites (engine, artifact, tools, logic, sequential, IR/backends)
+LICENSE               MIT License (attribution required — keep the copyright notice)
 ```
+
+## License
+
+[MIT License](LICENSE) — use it for anything, but keep the copyright notice.
+Copyright © 2026 Adam Tyrone.
