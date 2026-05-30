@@ -57,9 +57,10 @@ emitted text; it registers by existing. The IR is the only contract, so a new
 target is a sibling proc — no engine change.
 
 ```tcl
-schem::emit $schematic zig            ;# -> literal (electrical) Zig
-schem::emit $schematic zig -digital   ;# -> digital (boolean) Zig
-schem::backends                       ;# -> {dcref digref zig}
+schem::emit $schematic zig                       ;# -> literal (electrical) Zig
+schem::emit $schematic zig -digital              ;# -> digital (boolean) Zig
+schem::emit $schematic zig -digital -cycles N …  ;# -> clocked digital (sequential)
+schem::backends                                  ;# -> {dcref digref digseq zig}
 ```
 
 The backends ship today:
@@ -100,14 +101,30 @@ The backends ship today:
     gives the **identical** HIGH/LOW result at O(nets+contacts) per pass
     instead of an O(n^x) matrix factorisation (measured ~3× faster native on a
     266-node adder, the gap widening with size). It refuses non-digital parts
-    (diodes/reactives/transformers) and the sequential memory chip — use
-    literal mode (or, for clocked memory, the engine) for those.
+    (diodes/reactives/transformers) — use literal mode for those.
+  - **Clocked digital** (`schem emit zig FILE -digital -cycles N ?-events
+    {cycle {op SW} …}?`) — the *sequential* counterpart. Where plain digital
+    settles one operating point, this **carries relay and memory state across
+    clock cycles**: switches are runtime-mutable (the panel/clock, driven by a
+    per-cycle `-events` schedule), and each cycle it settles the boolean fixed
+    point — reachability from the rails *and* from any memory data-out driving a
+    stored 1, relays switching, memory reading its addressed cell and latching a
+    write on the rising `CLK` edge — then prints every node's level. This is how
+    the fast boolean backend runs **latches, flip-flops, counters and RAM**: a
+    seal-in relay that was energised stays energised, a written cell keeps its
+    word, exactly as the engine's persistent state does. Verified cycle-for-cycle
+    against the engine (and `digseq`).
 - **`dcref`** — a Tcl reference for the *literal* mode: solves the DC operating
   point straight from the IR (the same lowering the emitters use), the oracle
   the literal emitters are checked against.
 - **`digref`** — a Tcl reference for the *digital* mode: the same boolean
   cycle evaluation `zig -digital` emits, verified node-for-node against the
   electrical engine.
+- **`digseq`** — a Tcl reference for the *clocked digital* mode: a **stateful**
+  boolean evaluator that carries relay and memory state between cycles, the
+  spec `zig -digital -cycles N` transcribes. Driven through a clock sequence it
+  reproduces the engine's `solve`/`UpdateMemory`/`MemLatchClock` step for step,
+  so a latch, counter or RAM gives the identical bit pattern every cycle.
 
 > **The two-mode guarantee.** Literal mode is the trusted electrical truth and
 > the default; digital mode is a verified optimization, never a shortcut. The
@@ -120,7 +137,7 @@ The backends ship today:
 
 ## Examples
 
-Three committed samples of `schem emit zig`:
+Committed samples of `schem emit zig`:
 
 - `examples/voltage_divider.zig` — the divider, whose stamps
   (`stampG(a, 1, 2, 0.001)`, the 9 V source branch) solve to `N1 = 9 V`,
@@ -131,6 +148,9 @@ Three committed samples of `schem emit zig`:
 - `examples/relay_oscillator.zig` — the self-interrupting relay (transient),
   whose coil node prints `12, 0, 12, 0, …` over time — the same buzz the
   engine's `run()` produces.
+- `examples/d_latch_seq.zig` — a D latch in **clocked digital** mode, carrying
+  its held bit across six clock cycles (write 1, go transparent, hold, re-clock)
+  — the same `Q` the engine settles each cycle.
 
 ## Verification
 
@@ -144,6 +164,11 @@ compares node-for-node:
 - **Transient**: an RC charge, an RL ramp, the relay oscillator, a
   switch-gated charge (`-events`) and a fuse blowing on its `i2t` curve —
   step-for-step against the engine's `run()`.
+- **Digital**: every logic gate, the half- and full-adder — the compiled
+  digital and literal programs and the engine agreeing on every node.
+- **Clocked digital**: a D latch held across clock cycles and a RAM
+  write/read/reread sequence — the compiled clocked-digital program, `digseq`
+  and the engine agreeing on every node, every cycle.
 
 These were verified against Zig 0.13.0; every case matches to within `1e-3`.
 When no toolchain is present the compile-and-run tests **skip** cleanly, and a

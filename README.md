@@ -144,7 +144,7 @@ checks each fundamental rule against a hand-computed value:
 | **Sequential logic** | edge-triggered flip-flops → a 16-relay **2-bit counter** counting 00,01,10,11 |
 | **Standard panel circuits** | on/off-delay timers, one-shot, debounce, flasher, relay bank, safety interlock |
 
-Run them (136 tests total):
+Run them (140 tests total):
 
 ```sh
 $ tclsh tests/test_schem.tcl     # 47: the electrical laws + device realism + memory
@@ -154,7 +154,7 @@ $ tclsh tests/test_logic.tcl     # 10: relay gates, adder, latch (universality)
 $ tclsh tests/test_seq.tcl       #  8: D latch, flip-flops, binary counter
 $ tclsh tests/test_standard.tcl  #  7: timers, one-shot, debounce, flasher, bank, interlock
 $ tclsh tests/test_catalog.tcl   #  9: register, adder, counter, decoder, selector, accumulator, sequencer, computer
-$ tclsh tests/test_cir.tcl       # 29: circuit IR + Zig/dcref/digref (literal + digital modes; compiled & run vs the engine)
+$ tclsh tests/test_cir.tcl       # 33: circuit IR + Zig/dcref/digref/digseq (literal, digital & clocked-digital; compiled & run vs the engine)
 ```
 
 ## Examples

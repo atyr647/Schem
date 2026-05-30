@@ -109,6 +109,41 @@ proc tranMatch {s dur dt {events {}}} {
     }
     return ok
 }
+# clocked digital: drive the engine, digseq and the compiled clocked Zig through
+# the same per-cycle schedule ({cycle {op SW} ...}) and assert all three agree on
+# every node, every cycle -- the two-mode guarantee extended to sequential logic.
+proc seqMatch {s cycles events} {
+    # emit + compile + run the clocked Zig from the pristine schematic first
+    # (driving the engine below mutates switch state).
+    set f [file join [tcltest::temporaryDirectory] zs[pid].zig]
+    set fh [open $f w] ; puts $fh [schem::emit $s zig -digital -cycles $cycles -events $events] ; close $fh
+    set out [exec {*}[zigExe] run $f] ; file delete $f
+    set zbc [dict create]
+    foreach line [split $out \n] {
+        if {[regexp {^cycle (\d+):(.*)$} $line -> cy rest]} {
+            set d [dict create]
+            foreach tok $rest { if {[regexp {N(\d+)=([01])} $tok -> n v]} { dict set d $n $v } }
+            dict set zbc $cy $d
+        }
+    }
+    set byc [dict create]
+    foreach {cy op} $events { dict lappend byc $cy $op }
+    set st {}
+    for {set cy 0} {$cy < $cycles} {incr cy} {
+        if {[dict exists $byc $cy]} { foreach op [dict get $byc $cy] { $s {*}$op } }
+        $s solve
+        set cir [$s compile]
+        set r [schem::backend::digseq $cir $st] ; set st [dict get $r state]
+        set lv [dict get $r levels] ; set zc [dict get $zbc $cy]
+        dict for {nid terms} [dict get $cir nodes map] {
+            if {$nid == 0} continue
+            set eng [expr {[$s probe [lindex $terms 0]] > 6 ? 1 : 0}]
+            if {$eng != [dict get $lv $nid]}        { return "cycle $cy N$nid: engine=$eng digseq=[dict get $lv $nid]" }
+            if {$eng != [dict get $zc $nid]}        { return "cycle $cy N$nid: engine=$eng zig=[dict get $zc $nid]" }
+        }
+    }
+    return ok
+}
 
 # ---- the IR classifies elements by electrical role -----------------------
 
@@ -346,6 +381,67 @@ test digref-refuses-memory {digital mode refuses a (sequential) memory chip} -bo
     list $rc [string match "*not digital*memory*" $e]
 } -result {1 1}
 
+# ---- clocked digital (digseq): stateful, == the engine over a sequence ----
+
+test digseq-d-latch {clocked digital matches the engine on a D latch, cycle for cycle} -body {
+    # A D latch is sequential: its held state only emerges when state is carried
+    # between clock cycles.  Drive the engine and digseq through the same
+    # sequence and assert every node agrees every cycle -- including the HOLD.
+    set s [schem::new t]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    set g [$s instantiate [::schem::lib::d_latch] U]
+    $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+    $s add switch SD ; $s wire VCC.pos SD.a ; $s wire SD.b [dict get $g D]
+    $s add switch SC ; $s wire VCC.pos SC.a ; $s wire SC.b [dict get $g CLK]
+    set st {} ; set ok 1
+    foreach {d c} {1 1   0 1   1 0   0 0   1 1   0 0} {
+        if {$d} {$s close SD} else {$s open SD}
+        if {$c} {$s close SC} else {$s open SC}
+        $s solve
+        set cir [$s compile]
+        set r [schem::backend::digseq $cir $st] ; set st [dict get $r state]
+        set lv [dict get $r levels]
+        dict for {nid terms} [dict get $cir nodes map] {
+            if {$nid == 0} continue
+            if {[expr {[$s probe [lindex $terms 0]] > 6 ? 1 : 0}] != [dict get $lv $nid]} { set ok 0 }
+        }
+    }
+    $s destroy
+    set ok
+} -result 1
+
+test digseq-memory {clocked digital reproduces a RAM write/read against the engine} -body {
+    set AB 2 ; set DB 2
+    set s [schem::new m]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add memory M -abits $AB -dbits $DB ; $s wire M.GND GND.t
+    foreach p {A0 A1 DI0 DI1 WE CLK} { $s add switch S_$p -state open ; $s wire VCC.pos S_$p.a ; $s wire S_$p.b M.$p }
+    proc ::sb {s pre n val} { for {set i 0} {$i<$n} {incr i} { if {[expr {($val>>$i)&1}]} {$s close S_$pre$i} else {$s open S_$pre$i} } }
+    set st {} ; set ok 1
+    proc ::cyc {s stv okv} {
+        upvar 1 $stv st $okv ok
+        $s solve ; set cir [$s compile]
+        set r [schem::backend::digseq $cir $st] ; set st [dict get $r state]
+        set lv [dict get $r levels]
+        dict for {nid terms} [dict get $cir nodes map] {
+            if {$nid==0} continue
+            if {[expr {[$s probe [lindex $terms 0]]>6?1:0}] != [dict get $lv $nid]} { set ok 0 }
+        }
+    }
+    # write 2 -> addr 1, write 1 -> addr 0, then reread addr 1 (still 2)
+    sb $s A $AB 1 ; sb $s DI $DB 2 ; $s close S_WE
+    $s open S_CLK  ; cyc $s st ok
+    $s close S_CLK ; cyc $s st ok
+    $s open S_CLK ; $s open S_WE ; sb $s DI $DB 0 ; cyc $s st ok
+    sb $s A $AB 0 ; sb $s DI $DB 1 ; $s close S_WE
+    $s open S_CLK  ; cyc $s st ok
+    $s close S_CLK ; cyc $s st ok
+    $s open S_CLK ; $s open S_WE ; sb $s DI $DB 0 ; cyc $s st ok
+    sb $s A $AB 1 ; cyc $s st ok
+    rename ::sb {} ; rename ::cyc {} ; $s destroy
+    set ok
+} -result 1
+
 test dcref-relay-truthtable {dcref reproduces a relay AND gate's truth table from the IR} -body {
     set res {}
     foreach {a b} {0 0  0 1  1 0  1 1} {
@@ -472,5 +568,38 @@ test zig-digital-full-adder {compiled digital Zig matches the engine on the full
     $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
     foreach p {A B CIN} { $s add switch S$p ; $s wire VCC.pos S$p.a ; $s wire S$p.b [dict get $g $p] ; $s close S$p }
 } -body { digLitEngineAgree $s } -cleanup {$s destroy} -result 1
+
+# ---- clocked digital Zig (sequential) == digseq == the engine -------------
+
+test zig-seq-d-latch {compiled clocked digital matches the engine on a D latch} -constraints zig -setup {
+    set s [schem::new latchseq]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    set g [$s instantiate [::schem::lib::d_latch] U]
+    $s wire [dict get $g VCC] VCC.pos ; $s wire [dict get $g GND] GND.t
+    $s add switch SD ; $s wire VCC.pos SD.a ; $s wire SD.b [dict get $g D]
+    $s add switch SC ; $s wire VCC.pos SC.a ; $s wire SC.b [dict get $g CLK]
+} -body {
+    # write 1 (CLK high), drop D (transparent->0), hold (CLK low), wiggle D,
+    # re-clock to 1, then hold -- exercising the seal-in across cycles.
+    seqMatch $s 6 {0 {close SD} 0 {close SC} 1 {open SD} 2 {open SC} \
+                   3 {close SD} 4 {close SC} 5 {open SC} 5 {open SD}}
+} -cleanup {$s destroy} -result ok
+
+test zig-seq-memory {compiled clocked digital reproduces a RAM write/read sequence} -constraints zig -setup {
+    set s [schem::new memseq]
+    $s add battery VCC -emf 12 ; $s add ground GND ; $s wire VCC.neg GND.t
+    $s add memory M -abits 2 -dbits 2 ; $s wire M.GND GND.t
+    foreach p {A0 A1 DI0 DI1 WE CLK} { $s add switch S_$p -state open ; $s wire VCC.pos S_$p.a ; $s wire S_$p.b M.$p }
+} -body {
+    # write 2->addr1, write 1->addr0, reread addr1 (still 2): a rising CLK edge
+    # latches; the word survives, and the cells stay distinct across cycles.
+    seqMatch $s 7 {0 {close S_A0} 0 {close S_DI1} 0 {close S_WE} \
+                   1 {close S_CLK} \
+                   2 {open S_CLK} 2 {open S_WE} 2 {open S_DI1} \
+                   3 {open S_A0} 3 {close S_DI0} 3 {close S_WE} \
+                   4 {close S_CLK} \
+                   5 {open S_CLK} 5 {open S_WE} 5 {open S_DI0} \
+                   6 {close S_A0}}
+} -cleanup {$s destroy} -result ok
 
 cleanupTests
