@@ -709,4 +709,79 @@ test buffer-tristate {a tri-state buffer drives only when enabled, else releases
     list $hiz $a $b
 } -cleanup {$s destroy} -result {0 1 0}
 
+# =====================================================================
+#  validate -- design-rule checker
+# =====================================================================
+
+test validate-clean {validate returns empty list for a well-formed circuit} -body {
+    set s [schem::new vc]
+    $s add battery B -emf 9
+    $s add ground GND
+    $s add resistor R -r 1000
+    $s wire B.neg GND.t
+    $s wire B.pos R.a
+    $s wire R.b GND.t
+    set result [$s validate]
+    $s destroy
+    llength $result
+} -result 0
+
+test validate-floating-node {validate detects a node with no DC path to ground} -body {
+    # Two capacitors in series: the mid node (C1.b = C2.a) is between two open
+    # capacitors and has no DC path to either rail -- a genuinely floating node.
+    set s [schem::new vf]
+    $s add battery B -emf 9
+    $s add ground GND
+    $s add capacitor C1 -c 1e-6
+    $s add capacitor C2 -c 1e-6
+    $s wire B.neg GND.t
+    $s wire B.pos C1.a
+    $s wire C1.b C2.a   ;# this node has no DC path anywhere
+    $s wire C2.b GND.t
+    set faults [$s validate]
+    $s destroy
+    set rules [lmap f $faults {dict get $f rule}]
+    expr {"floating-node" in $rules}
+} -result 1
+
+test validate-bus-contention {validate detects two buffers simultaneously driving a bus} -setup {
+    set s [schem::new vbc]
+    $s add battery VCC -emf 12
+    $s add ground GND
+    $s wire VCC.neg GND.t
+    $s add buffer A -vhigh 12
+    $s add buffer B -vhigh 12
+    $s add switch SA -state closed   ;# both OE lines high -> contention
+    $s add switch SB -state closed
+    $s wire VCC.pos SA.a ; $s wire SA.b A.oe
+    $s wire VCC.pos SB.a ; $s wire SB.b B.oe
+    $s wire VCC.pos A.in ; $s wire VCC.pos B.in
+    $s wire A.out B.out             ;# shared output node
+    $s add resistor RP -r 100000 ; $s wire A.out RP.a ; $s wire RP.b GND.t
+} -body {
+    set faults [$s validate]
+    set rules [lmap f $faults {dict get $f rule}]
+    expr {"bus-contention" in $rules}
+} -cleanup {$s destroy} -result 1
+
+test validate-no-contention-one-driver {validate: single active driver is not contention} -body {
+    set s [schem::new vnc]
+    $s add battery VCC -emf 12
+    $s add ground GND
+    $s wire VCC.neg GND.t
+    $s add buffer A -vhigh 12
+    $s add buffer B -vhigh 12
+    $s add switch SA -state closed  ;# only A's OE is high
+    $s add switch SB -state open
+    $s wire VCC.pos SA.a ; $s wire SA.b A.oe
+    $s wire VCC.pos SB.a ; $s wire SB.b B.oe
+    $s wire VCC.pos A.in ; $s wire VCC.pos B.in
+    $s wire A.out B.out
+    $s add resistor RP -r 100000 ; $s wire A.out RP.a ; $s wire RP.b GND.t
+    set faults [$s validate]
+    $s destroy
+    set rules [lmap f $faults {dict get $f rule}]
+    expr {"bus-contention" ni $rules}
+} -result 1
+
 cleanupTests

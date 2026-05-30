@@ -130,6 +130,76 @@ oo::define ::schem::Schematic {
                 message "[llength [my conns]] couplings exceeds $MAX_COUPLINGS: consider named buses and harnesses"]
         }
 
+        # --- floating nodes (static DC-topology check) ---
+        # A node is floating if it has no finite-resistance path to ground: only
+        # the 1 pF regulariser "connects" it so the solved voltage is undefined.
+        # BFS from node 0 over every conducting element (resistors, closed
+        # switches / fuses / breakers, batteries, inductors, relay coils and
+        # contacts, diodes, transistors) -- open capacitors are NOT edges.
+        if {[llength $grounds] > 0} {
+            my BuildNodes
+            set adjFN [dict create 0 {}]
+            set addE {{a b} { upvar 1 adjFN adjFN
+                dict lappend adjFN $a $b ; dict lappend adjFN $b $a }}
+            foreach c $comps {
+                set t [my typeof $c]
+                switch $t {
+                    battery   { apply $addE [my NodeOf $c.pos] [my NodeOf $c.neg] }
+                    resistor  { apply $addE [my NodeOf $c.a]   [my NodeOf $c.b] }
+                    switch - button {
+                        if {[my get $c state] in {closed pressed}} {
+                            apply $addE [my NodeOf $c.a] [my NodeOf $c.b]
+                        }
+                    }
+                    fuse    { if {[my get $c state] eq "intact"} { apply $addE [my NodeOf $c.a] [my NodeOf $c.b] } }
+                    breaker { if {[my get $c state] eq "closed"} { apply $addE [my NodeOf $c.a] [my NodeOf $c.b] } }
+                    ammeter     { apply $addE [my NodeOf $c.a]  [my NodeOf $c.b] }
+                    inductor    { apply $addE [my NodeOf $c.a]  [my NodeOf $c.b] }
+                    relay {
+                        apply $addE [my NodeOf $c.c1] [my NodeOf $c.c2]
+                        apply $addE [my NodeOf $c.com] [my NodeOf $c.nc]
+                        apply $addE [my NodeOf $c.com] [my NodeOf $c.no]
+                    }
+                    transformer {
+                        apply $addE [my NodeOf $c.p1] [my NodeOf $c.n1]
+                        apply $addE [my NodeOf $c.p2] [my NodeOf $c.n2]
+                    }
+                    diode  { apply $addE [my NodeOf $c.a] [my NodeOf $c.k] }
+                    mosfet { apply $addE [my NodeOf $c.d] [my NodeOf $c.s] }
+                    bjt    { apply $addE [my NodeOf $c.b] [my NodeOf $c.e]
+                             apply $addE [my NodeOf $c.c] [my NodeOf $c.e] }
+                    memory { foreach pin [my terminals $c] { apply $addE [my NodeOf $c.$pin] 0 } }
+                    buffer { apply $addE [my NodeOf $c.in]  0
+                             apply $addE [my NodeOf $c.oe]  0
+                             apply $addE [my NodeOf $c.out] 0 }
+                }
+            }
+            foreach co [my conns] {
+                lassign $co ta tb awg
+                if {$awg ne ""} { apply $addE [my NodeOf $ta] [my NodeOf $tb] }
+            }
+            # BFS from ground
+            set visitedFN [dict create 0 1] ; set qFN [list 0]
+            while {[llength $qFN]} {
+                set cur [lindex $qFN 0] ; set qFN [lrange $qFN 1 end]
+                if {![dict exists $adjFN $cur]} continue
+                foreach nb [dict get $adjFN $cur] {
+                    if {![dict exists $visitedFN $nb]} { dict set visitedFN $nb 1 ; lappend qFN $nb }
+                }
+            }
+            # build term -> node map for readable messages
+            set byNode [dict create]
+            dict for {term nid} $Node { dict lappend byNode $nid $term }
+            for {set nid 1} {$nid <= $NNodes} {incr nid} {
+                if {[dict exists $visitedFN $nid]} continue
+                set terms [lsort [dict get $byNode $nid]]
+                set label [join [lrange $terms 0 2] ", "]
+                if {[llength $terms] > 3} { append label ", …" }
+                lappend findings [dict create severity warning rule floating-node \
+                    message "node $nid ($label) has no DC path to ground (capacitor-only or undriven)"]
+            }
+        }
+
         # --- electrical faults (trial solve, no side effects) ---
         if {[llength $grounds] > 0} {
             set snap [my Snapshot]
@@ -144,12 +214,29 @@ oo::define ::schem::Schematic {
                     lappend findings [dict create severity $sev rule [dict get $flt kind] \
                         message [dict get $flt detail]]
                 }
+                # bus-contention: two tri-state buffers simultaneously driving
+                # the same output node with OE high after the fixed point settles.
+                set driven [dict create]
+                foreach c $comps {
+                    if {[my typeof $c] ne "buffer"} continue
+                    set thr [expr {double([my get $c vhigh]) / 2.0}]
+                    if {[my probe $c.oe] > $thr} {
+                        set outNode [my NodeOf $c.out]
+                        if {[dict exists $driven $outNode]} {
+                            set other [dict get $driven $outNode]
+                            lappend findings [dict create severity error rule bus-contention \
+                                component "$c+$other" \
+                                message "buffers $c and $other both drive node $outNode simultaneously (bus contention)"]
+                        } else {
+                            dict set driven $outNode $c
+                        }
+                    }
+                }
             }
             my RestoreSnapshot $snap
         }
 
         # order: errors, then warnings, then info
-        set rank {error 0 warning 1 info 2}
         return [lsort -command {apply {{x y} {
             expr {[dict get {error 0 warning 1 info 2} [dict get $x severity]] -
                   [dict get {error 0 warning 1 info 2} [dict get $y severity]]}

@@ -1187,6 +1187,7 @@ oo::define ::schem::Schematic {
         return {}
     }
 
+
     method energized {name} { return [dict exists $Result energized $name] }
 
     # report -- a human-readable summary of the last solve: node voltages,
