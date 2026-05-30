@@ -838,4 +838,126 @@ test zig-seq-cpu {clocked digital Zig runs the stored-program machine == engine}
     seqMatch $s $cycles $events
 } -cleanup {$s destroy} -result ok
 
+# ---- MOSFET (transistor) tests ------------------------------------------
+
+# N-channel switch: gate at VDD turns the MOSFET fully on, drain nearly at GND.
+# Gate at GND turns it off, drain nearly at VDD.
+test mosfet-nmos-switch {NMOS switch: on when Vgs > Vto, off when Vgs <= 0} -body {
+    proc ::ms {gate_hi} {
+        set s [schem::new ms]
+        $s add battery VDD -emf 5
+        $s add ground GND
+        $s add resistor R -r 1000
+        $s add mosfet M -vto 1.0 -kp 0.1 -lambda 0.01
+        $s wire VDD.neg GND.t
+        $s wire VDD.pos R.a
+        $s wire R.b M.d
+        $s wire M.s GND.t
+        if {$gate_hi} {
+            $s wire VDD.pos M.g        ;# Vgs = 5V >> Vto = 1V -> ON
+        } else {
+            $s wire GND.t M.g          ;# Vgs = 0V < Vto = 1V -> OFF
+        }
+        $s solve
+        set vd [$s probe M.d]
+        $s destroy
+        return $vd
+    }
+    set vd_on  [ms 1]
+    set vd_off [ms 0]
+    # OFF: drain should be near VDD (MOSFET not conducting, no current through R)
+    # ON:  drain should be near 0 V (MOSFET pulling down through channel)
+    list [expr {$vd_off > 4.9}] [expr {$vd_on < 0.5}]
+} -cleanup {rename ::ms {}} -result {1 1}
+
+# P-channel switch: gate at GND turns PMOS on (Vgs = 0 - 5 = -5V << Vtp = -1V).
+test mosfet-pmos-switch {PMOS switch: on when Vgs < Vtp (negative), off when Vgs = 0} -body {
+    proc ::ps {gate_lo} {
+        set s [schem::new ps]
+        $s add battery VDD -emf 5
+        $s add ground GND
+        $s add resistor R -r 1000
+        # PMOS: vto is magnitude of threshold (MosfetGI negates internally)
+        $s add mosfet M -vto 1.0 -kp 0.1 -lambda 0.01 -type p
+        $s wire VDD.neg GND.t
+        $s wire M.s VDD.pos            ;# source to VDD (PMOS source = high side)
+        $s wire M.d R.a
+        $s wire R.b GND.t
+        if {$gate_lo} {
+            $s wire GND.t M.g          ;# Vgs = 0-5 = -5V << -Vto -> ON
+        } else {
+            $s wire VDD.pos M.g        ;# Vgs = 5-5 = 0V, not on
+        }
+        $s solve
+        set vd [$s probe M.d]
+        $s destroy
+        return $vd
+    }
+    set vd_on  [ps 1]
+    set vd_off [ps 0]
+    # OFF: drain should be near 0 V (no current through R)
+    # ON:  drain should be near VDD (PMOS pulling drain up through channel)
+    list [expr {$vd_off < 0.1}] [expr {$vd_on > 4.5}]
+} -cleanup {rename ::ps {}} -result {1 1}
+
+# dcref must reproduce the engine's MOSFET DC solve to < 1 mV on every node.
+test dcref-mosfet {dcref reproduces the engine's MOSFET operating point (from the IR)} -setup {
+    set s [schem::new dcm]
+    $s add battery VDD -emf 5
+    $s add ground GND
+    $s add resistor R -r 1000
+    $s add mosfet M -vto 1.0 -kp 0.05 -lambda 0.01
+    $s wire VDD.neg GND.t
+    $s wire VDD.pos R.a
+    $s wire R.b M.d
+    $s wire M.s GND.t
+    $s wire VDD.pos M.g
+    $s solve
+} -body {
+    set v [schem::backend::dcref [$s compile]]
+    set ir [$s compile] ; set ok 1
+    dict for {nid terms} [dict get $ir nodes map] {
+        if {$nid == 0} continue
+        if {abs([dict get $v $nid] - [$s probe [lindex $terms 0]]) > 1e-3} { set ok 0 }
+    }
+    set ok
+} -cleanup {$s destroy} -result 1
+
+# Zig DC backend must emit a mosfetComp function and Newton loop for MOSFET.
+test zig-emits-mosfet {MOSFET emits the metadata arrays and Newton loop} -constraints zig -setup {
+    set s [schem::new zm]
+    $s add battery VDD -emf 5
+    $s add ground GND
+    $s add resistor R -r 1000
+    $s add mosfet M -vto 1.0 -kp 0.05 -lambda 0.01
+    $s wire VDD.neg GND.t
+    $s wire VDD.pos R.a
+    $s wire R.b M.d
+    $s wire M.s GND.t
+    $s wire VDD.pos M.g
+    set z [schem::emit $s zig]
+    proc has {h n} { expr {[string first $n $h] >= 0} }
+} -body {
+    list [has $z "const NM: usize = 1;"] \
+         [has $z "fn mosfetComp("] \
+         [has $z "var mosfetVgs"] \
+         [has $z "if (maxd < 1e-9) break;"]
+} -cleanup {$s destroy} -result {1 1 1 1}
+
+# Full Zig compile+run reproduces the engine's MOSFET operating point.
+test zig-dc-mosfet {Zig DC solve matches the engine on MOSFET circuit} -constraints zig -setup {
+    set s [schem::new zdm]
+    $s add battery VDD -emf 5
+    $s add ground GND
+    $s add resistor R -r 1000
+    $s add mosfet M -vto 1.0 -kp 0.05 -lambda 0.01
+    $s wire VDD.neg GND.t
+    $s wire VDD.pos R.a
+    $s wire R.b M.d
+    $s wire M.s GND.t
+    $s wire VDD.pos M.g
+} -body {
+    nodesMatch $s
+} -cleanup {$s destroy} -result 1
+
 cleanupTests

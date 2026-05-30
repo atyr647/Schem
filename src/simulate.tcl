@@ -382,6 +382,24 @@ oo::define ::schem::Schematic {
             apply $stampI $na $nk $Ieq
         }
 
+        # --- MOSFETs (nonlinear, linearised at operating point vgs0/vds0) ---
+        dict for {name comp} $Comp {
+            if {[dict get $comp type] ne "mosfet"} continue
+            set op [expr {[dict exists $state mosfetOP $name] ? \
+                [dict get $state mosfetOP $name] : {0.0 0.0}}]
+            lassign $op vgs0 vds0
+            lassign [my MosfetGI $name $vgs0 $vds0] Id gm gds
+            set ng [my NodeOf $name.g]
+            set nd [my NodeOf $name.d]
+            set ns [my NodeOf $name.s]
+            # gds: drain-source output conductance
+            apply $stampG $nd $ns $gds
+            # VCCS: gm*(Vg - Vs) drives current from D to S
+            apply $stampVCCS $nd $ns $ng $ns $gm
+            # Constant part: Ieq = Id - gm*vgs0 - gds*vds0
+            apply $stampI $nd $ns [expr {$Id - $gm*$vgs0 - $gds*$vds0}]
+        }
+
         # --- branches (voltage sources / ideal conductors) ---
         for {set k 0} {$k < $B} {incr k} {
             set b [lindex $branches $k]
@@ -454,6 +472,27 @@ oo::define ::schem::Schematic {
                 dict set diodeV $name $vnew
             }
             dict set state diodeV $diodeV
+
+            # Update MOSFET operating points (vgs, vds) with damping.
+            set mosfetOP [expr {[dict exists $state mosfetOP] ? \
+                [dict get $state mosfetOP] : [dict create]}]
+            dict for {name comp} $Comp {
+                if {[dict get $comp type] ne "mosfet"} continue
+                set ns [my NodeOf $name.s]
+                set vgs [expr {[apply $nodeV [my NodeOf $name.g]] - [apply $nodeV $ns]}]
+                set vds [expr {[apply $nodeV [my NodeOf $name.d]] - [apply $nodeV $ns]}]
+                set old [expr {[dict exists $mosfetOP $name] ? \
+                    [dict get $mosfetOP $name] : {0.0 0.0}}]
+                lassign $old vgs0 vds0
+                if {$vgs - $vgs0 >  0.5} { set vgs [expr {$vgs0 + 0.5}] }
+                if {$vgs0 - $vgs >  0.5} { set vgs [expr {$vgs0 - 0.5}] }
+                if {$vds - $vds0 >  0.5} { set vds [expr {$vds0 + 0.5}] }
+                if {$vds0 - $vds >  0.5} { set vds [expr {$vds0 - 0.5}] }
+                set d [expr {max(abs($vgs-$vgs0), abs($vds-$vds0))}]
+                if {$d > $maxd} { set maxd $d }
+                dict set mosfetOP $name [list $vgs $vds]
+            }
+            dict set state mosfetOP $mosfetOP
             if {$maxd < 1e-9} break
         }
         return [dict create sol $sol branches $branches state $state]
@@ -892,6 +931,11 @@ oo::define ::schem::Schematic {
                     # reverse-breakdown contribution); positive a -> k forward.
                     set i [my DiodeCurrent $name [my voltage $name.a $name.k]]
                 }
+                mosfet {
+                    set vgs [my voltage $name.g $name.s]
+                    set vds [my voltage $name.d $name.s]
+                    set i [lindex [my MosfetGI $name $vgs $vds] 0]
+                }
                 default { return 0.0 }
             }
         }
@@ -919,6 +963,44 @@ oo::define ::schem::Schematic {
         return [list $Id $gj]
     }
 
+    # MosfetGI -- drain current Id (D→S convention), transconductance gm, and
+    # output conductance gds at the linearisation point (vgs, vds).  Uses the
+    # Shichman-Hodges model.  For PMOS (`type p`) the voltages are negated
+    # internally so the equations use the equivalent-NMOS quantities; the
+    # returned Id is negative (conventional current flows S→D for a PMOS).
+    method MosfetGI {name vgs vds} {
+        set pr [dict get $Comp $name params]
+        set vto    [expr {double([dict get $pr vto])}]
+        set kp     [expr {double([dict get $pr kp])}]
+        set lambda [expr {double([dict get $pr lambda])}]
+        set pmos   [expr {[dict get $pr type] eq "p"}]
+        if {$pmos} { set vgs [expr {-$vgs}] ; set vds [expr {-$vds}] }
+        set vov [expr {$vgs - $vto}]
+        if {$vov <= 0.0} {
+            # Cutoff: below threshold, no channel.
+            set Id 0.0 ; set gm 0.0 ; set gds 1e-12
+        } elseif {$vds <= 0.0} {
+            # Below-pinch-off triode (Vds ≤ 0): device symmetric around Vds=0.
+            # Use linear first-order model: Id ≈ gds_0 * Vds.
+            set gds [expr {$kp * $vov}]
+            set Id  [expr {$gds * $vds}]
+            set gm  0.0
+        } elseif {$vds < $vov} {
+            set lv [expr {1.0 + $lambda * $vds}]
+            set Id  [expr {$kp * ($vov*$vds - $vds*$vds*0.5) * $lv}]
+            set gm  [expr {$kp * $vds * $lv}]
+            set gds [expr {$kp*($vov-$vds)*$lv + $kp*($vov*$vds-$vds*$vds*0.5)*$lambda}]
+        } else {
+            set lv [expr {1.0 + $lambda * $vds}]
+            set Id  [expr {$kp * 0.5 * $vov*$vov * $lv}]
+            set gm  [expr {$kp * $vov * $lv}]
+            set gds [expr {$kp * 0.5 * $vov*$vov * $lambda}]
+        }
+        if {$gds < 1e-12} { set gds 1e-12 }
+        if {$pmos} { set Id [expr {-$Id}] }
+        return [list $Id $gm $gds]
+    }
+
     # DiodeCurrent -- the diode current (anode->cathode) at junction voltage vj.
     method DiodeCurrent {name vj} {
         return [lindex [my DiodeGI $name $vj] 0]
@@ -935,6 +1017,10 @@ oo::define ::schem::Schematic {
             diode   { set pins {a k} }
             resistor - capacitor - inductor - switch - button -
             fuse - breaker - ammeter { set pins {a b} }
+            mosfet {
+                # P_channel = Vds * Id (positive = dissipating in channel)
+                return [expr {[my voltage $name.d $name.s] * [my current $name -signed]}]
+            }
             default { return 0.0 }
         }
         lassign $pins p q
@@ -1044,7 +1130,7 @@ oo::define ::schem::Schematic {
             set type [dict get $comp type]
             if {$type in {ground bus junction}} continue
             if {[catch {my current $name} i] || $i == 0.0} {
-                if {$type ni {battery resistor relay inductor capacitor switch button fuse breaker ammeter diode}} continue
+                if {$type ni {battery resistor relay inductor capacitor switch button fuse breaker ammeter diode mosfet}} continue
             }
             lappend out [format "  %-12s %-9s %10.5f A" $name $type $i]
         }

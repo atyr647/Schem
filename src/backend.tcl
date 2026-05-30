@@ -48,7 +48,7 @@ proc ::schem::backends {} {
 # state-controlled conductances; diodes are nonlinear.  Capacitors are open at
 # DC and drop out.  Nothing is refused -- every part has a DC lowering.
 proc ::schem::backend::LowerDC {cir} {
-    set conds {} ; set branches {} ; set relays {} ; set diodes {} ; set protect {} ; set buffers {}
+    set conds {} ; set branches {} ; set relays {} ; set diodes {} ; set mosfets {} ; set protect {} ; set buffers {}
     foreach e [dict get $cir elements] {
         set nm [dict get $e name]
         if {[dict exists $e nodes]} { set nd [dict get $e nodes] }
@@ -75,6 +75,11 @@ proc ::schem::backend::LowerDC {cir} {
                 set m [dict get $e model]
                 lappend diodes [list [dict get $nd a] [dict get $nd k] \
                     [dict get $m is] [dict get $m n] [dict get $m rs] [dict get $m bv] $nm]
+            }
+            transistor {
+                set m [dict get $e model]
+                lappend mosfets [list [dict get $nd g] [dict get $nd d] [dict get $nd s] \
+                    [dict get $m vto] [dict get $m kp] [dict get $m lambda] [dict get $m pmos] $nm]
             }
             reactive {
                 if {[dict get $e type] eq "inductor"} {
@@ -141,7 +146,7 @@ proc ::schem::backend::LowerDC {cir} {
     }
     set n [dict get $cir nodes count]
     return [dict create n $n sz [expr {$n + [llength $branches]}] \
-        conds $conds branches $branches relays $relays diodes $diodes protect $protect buffers $buffers]
+        conds $conds branches $branches relays $relays diodes $diodes mosfets $mosfets protect $protect buffers $buffers]
 }
 
 # DiodeGI -- junction current Id and small-signal conductance gj at junction
@@ -163,6 +168,34 @@ proc ::schem::backend::DiodeGI {vj is n rs bv} {
     return [list $Gt [expr {$Id - $Gt*$vd0}] $Id]
 }
 
+# MosfetGI -- drain current Id (D→S convention), transconductance gm, and
+# output conductance gds from the Shichman-Hodges model.  Returns {Id gm gds}.
+# pmos non-zero: negate voltages internally, negate returned Id.
+proc ::schem::backend::MosfetGI {vgs vds vto kp lambda pmos} {
+    if {$pmos} { set vgs [expr {-$vgs}] ; set vds [expr {-$vds}] }
+    set vov [expr {$vgs - $vto}]
+    if {$vov <= 0.0} {
+        set Id 0.0 ; set gm 0.0 ; set gds 1e-12
+    } elseif {$vds <= 0.0} {
+        set gds [expr {$kp * $vov}]
+        set Id  [expr {$gds * $vds}]
+        set gm  0.0
+    } elseif {$vds < $vov} {
+        set lv [expr {1.0 + $lambda * $vds}]
+        set Id  [expr {$kp * ($vov*$vds - $vds*$vds*0.5) * $lv}]
+        set gm  [expr {$kp * $vds * $lv}]
+        set gds [expr {$kp*($vov-$vds)*$lv + $kp*($vov*$vds-$vds*$vds*0.5)*$lambda}]
+    } else {
+        set lv [expr {1.0 + $lambda * $vds}]
+        set Id  [expr {$kp * 0.5 * $vov*$vov * $lv}]
+        set gm  [expr {$kp * $vov * $lv}]
+        set gds [expr {$kp * 0.5 * $vov*$vov * $lambda}]
+    }
+    if {$gds < 1e-12} { set gds 1e-12 }
+    if {$pmos} { set Id [expr {-$Id}] }
+    return [list $Id $gm $gds]
+}
+
 # ====================================================================
 #  dcref -- reference DC backend (in Tcl) that solves straight from the IR.
 # ====================================================================
@@ -178,6 +211,7 @@ proc ::schem::backend::dcref {cir} {
     if {$SZ == 0} { return [dict create 0 0.0] }
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
+    set mosfets [dict get $L mosfets]
     set protect [dict get $L protect] ; set buffers [dict get $L buffers]
     set gc [expr {1.0/$RSMALL}]
     set b2buf [dict create]   ;# branch index -> {in oe vhigh rout} for tri-state buffers
@@ -185,6 +219,8 @@ proc ::schem::backend::dcref {cir} {
 
     set energized [lrepeat [llength $relays] 0]
     set diodeV    [lrepeat [llength $diodes] 0.0]
+    set mosfetVgs [lrepeat [llength $mosfets] 0.0]
+    set mosfetVds [lrepeat [llength $mosfets] 0.0]
     set fbopen    [dict create]   ;# protective branch index -> 1 once tripped
     set bufdrv    [dict create]   ;# buffer branch index -> driven voltage (absent = Hi-Z)
     set x {}
@@ -208,6 +244,22 @@ proc ::schem::backend::dcref {cir} {
                 StampG A $na $nk $Gt
                 if {$na != 0} { lset z [expr {$na-1}] [expr {[lindex $z [expr {$na-1}]] - $Ieq}] }
                 if {$nk != 0} { lset z [expr {$nk-1}] [expr {[lindex $z [expr {$nk-1}]] + $Ieq}] }
+            }
+            for {set mi 0} {$mi < [llength $mosfets]} {incr mi} {
+                lassign [lindex $mosfets $mi] ng nd ns vto kp lambda pmos nm
+                lassign [MosfetGI [lindex $mosfetVgs $mi] [lindex $mosfetVds $mi] \
+                    $vto $kp $lambda $pmos] Id gm gds
+                set vgs0 [lindex $mosfetVgs $mi] ; set vds0 [lindex $mosfetVds $mi]
+                set Ieq [expr {$Id - $gm*$vgs0 - $gds*$vds0}]
+                StampG A $nd $ns $gds
+                # VCCS: gm*(Vg - Vs) from D to S
+                foreach {row col s} [list $nd $ng 1 $nd $ns -1 $ns $ng -1 $ns $ns 1] {
+                    if {$row != 0 && $col != 0} {
+                        ::schem::la::spacc A [expr {$row-1}] [expr {$col-1}] [expr {$s*$gm}]
+                    }
+                }
+                if {$nd != 0} { lset z [expr {$nd-1}] [expr {[lindex $z [expr {$nd-1}]] - $Ieq}] }
+                if {$ns != 0} { lset z [expr {$ns-1}] [expr {[lindex $z [expr {$ns-1}]] + $Ieq}] }
             }
             set k 0
             foreach br $branches {
@@ -246,6 +298,19 @@ proc ::schem::backend::dcref {cir} {
                 if {$vold - $vnew > 0.5} { set vnew [expr {$vold - 0.5}] }
                 set d [expr {abs($vnew-$vold)}] ; if {$d > $maxd} { set maxd $d }
                 lset diodeV $di $vnew
+            }
+            for {set mi 0} {$mi < [llength $mosfets]} {incr mi} {
+                lassign [lindex $mosfets $mi] ng nd ns vto kp lambda pmos nm
+                set vgs [expr {[Nv $x $ng] - [Nv $x $ns]}]
+                set vds [expr {[Nv $x $nd] - [Nv $x $ns]}]
+                set vgs0 [lindex $mosfetVgs $mi] ; set vds0 [lindex $mosfetVds $mi]
+                if {$vgs - $vgs0 >  0.5} { set vgs [expr {$vgs0 + 0.5}] }
+                if {$vgs0 - $vgs >  0.5} { set vgs [expr {$vgs0 - 0.5}] }
+                if {$vds - $vds0 >  0.5} { set vds [expr {$vds0 + 0.5}] }
+                if {$vds0 - $vds >  0.5} { set vds [expr {$vds0 - 0.5}] }
+                set dv [expr {max(abs($vgs-$vgs0), abs($vds-$vds0))}]
+                if {$dv > $maxd} { set maxd $dv }
+                lset mosfetVgs $mi $vgs ; lset mosfetVds $mi $vds
             }
             if {$maxd < 1e-9} break
         }
@@ -335,14 +400,15 @@ proc ::schem::backend::zig {cir args} {
     set N [dict get $L n] ; set SZ [dict get $L sz]
     set conds [dict get $L conds] ; set branches [dict get $L branches]
     set relays [dict get $L relays] ; set diodes [dict get $L diodes]
+    set mosfets [dict get $L mosfets]
     set protect [dict get $L protect]
-    set NR [llength $relays] ; set ND [llength $diodes] ; set NP [llength $protect]
+    set NR [llength $relays] ; set ND [llength $diodes] ; set NM [llength $mosfets] ; set NP [llength $protect]
     set name [dict get $cir name]
     # map branch index -> protective index (which branches can blow/trip)
     set b2p [dict create] ; set pj 0
     foreach p $protect { dict set b2p [lindex $p 0] $pj ; incr pj }
 
-    # --- metadata arrays for relays and diodes ---
+    # --- metadata arrays for relays, diodes and MOSFETs ---
     proc Zarr {ty vals} { return "\[[llength $vals]\]$ty{[join $vals {, }]}" }
     set r_c1 {} ; set r_c2 {} ; set r_rc {} ; set r_pu {} ; set r_do {}
     set r_com {} ; set r_no {} ; set r_nc {}
@@ -357,6 +423,13 @@ proc ::schem::backend::zig {cir args} {
         lassign $d na nk is nf rs bv nm
         lappend d_a $na ; lappend d_k $nk ; lappend d_is [Zf $is]
         lappend d_n [Zf $nf] ; lappend d_rs [Zf $rs] ; lappend d_bv [Zf $bv]
+    }
+    set m_g {} ; set m_d {} ; set m_s {} ; set m_vto {} ; set m_kp {} ; set m_lambda {} ; set m_pmos {}
+    foreach m $mosfets {
+        lassign $m ng nd ns vto kp lambda pmos nm
+        lappend m_g $ng ; lappend m_d $nd ; lappend m_s $ns
+        lappend m_vto [Zf $vto] ; lappend m_kp [Zf $kp] ; lappend m_lambda [Zf $lambda]
+        lappend m_pmos [expr {$pmos ? "true" : "false"}]
     }
 
     # --- assemble() body: base conductances + branches (straight-line) ---
@@ -391,13 +464,14 @@ proc ::schem::backend::zig {cir args} {
     set S {}
     lappend S "// Generated by Schem -- DC operating point of \"$name\""
     lappend S "// Derived from the Circuit IR; the .schem schematic is the source."
-    lappend S "// $N node(s), $NR relay(s), $ND diode(s); SZ=$SZ unknowns.  Build: zig run this.zig"
+    lappend S "// $N node(s), $NR relay(s), $ND diode(s), $NM mosfet(s); SZ=$SZ unknowns.  Build: zig run this.zig"
     lappend S "const std = @import(\"std\");"
     lappend S ""
     lappend S "const N: usize = $N;"
     lappend S "const SZ: usize = $SZ;"
     lappend S "const NR: usize = $NR;"
     lappend S "const ND: usize = $ND;"
+    lappend S "const NM: usize = $NM;"
     lappend S "const NP: usize = $NP;"
     lappend S "const RSMALL: f64 = [Zf $RSMALL];"
     lappend S ""
@@ -428,6 +502,17 @@ proc ::schem::backend::zig {cir args} {
         lappend S "const d_bv = [Zarr f64 $d_bv];"
         lappend S "var diodeV = \[_\]f64{0} ** ND;"
     }
+    if {$NM} {
+        lappend S "const m_g = [Zarr usize $m_g];"
+        lappend S "const m_d = [Zarr usize $m_d];"
+        lappend S "const m_s = [Zarr usize $m_s];"
+        lappend S "const m_vto = [Zarr f64 $m_vto];"
+        lappend S "const m_kp = [Zarr f64 $m_kp];"
+        lappend S "const m_lambda = [Zarr f64 $m_lambda];"
+        lappend S "const m_pmos = [Zarr bool $m_pmos];"
+        lappend S "var mosfetVgs = \[_\]f64{0} ** NM;"
+        lappend S "var mosfetVds = \[_\]f64{0} ** NM;"
+    }
     lappend S ""
     lappend S "fn nv(z: \[\]const f64, nid: usize) f64 { return if (nid == 0) 0.0 else z\[nid - 1\]; }"
     lappend S "fn stampG(a: \[\]f64, na: usize, nb: usize, g: f64) void {"
@@ -456,6 +541,34 @@ proc ::schem::backend::zig {cir args} {
         lappend S "    if (gj < 1e-12) gj = 1e-12;"
         lappend S "    const gt = gj / (1.0 + gj * d_rs\[d\]);"
         lappend S "    return .{ .gt = gt, .ieq = Id - gt * (vj + Id * d_rs\[d\]) };"
+        lappend S "}"
+    }
+    if {$NM} {
+        lappend S "const MG = struct { id: f64, gm: f64, gds: f64 };"
+        lappend S "fn mosfetComp(m: usize, vgs_in: f64, vds_in: f64) MG {"
+        lappend S "    var vgs = if (m_pmos\[m\]) -vgs_in else vgs_in;"
+        lappend S "    var vds = if (m_pmos\[m\]) -vds_in else vds_in;"
+        lappend S "    const vov = vgs - m_vto\[m\];"
+        lappend S "    var id: f64 = 0; var gm: f64 = 0; var gds: f64 = 1e-12;"
+        lappend S "    if (vov > 0) {"
+        lappend S "        if (vds <= 0) {"
+        lappend S "            gds = m_kp\[m\] * vov;"
+        lappend S "            id = gds * vds;"
+        lappend S "        } else if (vds < vov) {"
+        lappend S "            const lv = 1.0 + m_lambda\[m\] * vds;"
+        lappend S "            id = m_kp\[m\] * (vov*vds - vds*vds*0.5) * lv;"
+        lappend S "            gm = m_kp\[m\] * vds * lv;"
+        lappend S "            gds = m_kp\[m\]*(vov-vds)*lv + m_kp\[m\]*(vov*vds-vds*vds*0.5)*m_lambda\[m\];"
+        lappend S "        } else {"
+        lappend S "            const lv = 1.0 + m_lambda\[m\] * vds;"
+        lappend S "            id = m_kp\[m\] * 0.5 * vov*vov * lv;"
+        lappend S "            gm = m_kp\[m\] * vov * lv;"
+        lappend S "            gds = m_kp\[m\] * 0.5 * vov*vov * m_lambda\[m\];"
+        lappend S "        }"
+        lappend S "    }"
+        lappend S "    if (gds < 1e-12) gds = 1e-12;"
+        lappend S "    const id_out = if (m_pmos\[m\]) -id else id;"
+        lappend S "    return .{ .id = id_out, .gm = gm, .gds = gds };"
         lappend S "}"
     }
     lappend S ""
@@ -503,6 +616,20 @@ proc ::schem::backend::zig {cir args} {
         lappend S "        if (d_k\[d\] != 0) z\[d_k\[d\]-1\] += c.ieq;"
         lappend S "    } }"
     }
+    if {$NM} {
+        lappend S "    { var m: usize = 0; while (m < NM) : (m += 1) {"
+        lappend S "        const c = mosfetComp(m, mosfetVgs\[m\], mosfetVds\[m\]);"
+        lappend S "        stampG(a, m_d\[m\], m_s\[m\], c.gds);"
+        lappend S "        // VCCS: gm*(Vg - Vs) from D to S"
+        lappend S "        if (m_d\[m\] != 0 and m_g\[m\] != 0) a\[(m_d\[m\]-1)*SZ+(m_g\[m\]-1)\] += c.gm;"
+        lappend S "        if (m_d\[m\] != 0 and m_s\[m\] != 0) a\[(m_d\[m\]-1)*SZ+(m_s\[m\]-1)\] -= c.gm;"
+        lappend S "        if (m_s\[m\] != 0 and m_g\[m\] != 0) a\[(m_s\[m\]-1)*SZ+(m_g\[m\]-1)\] -= c.gm;"
+        lappend S "        if (m_s\[m\] != 0 and m_s\[m\] != 0) a\[(m_s\[m\]-1)*SZ+(m_s\[m\]-1)\] += c.gm;"
+        lappend S "        const ieq = c.id - c.gm*mosfetVgs\[m\] - c.gds*mosfetVds\[m\];"
+        lappend S "        if (m_d\[m\] != 0) z\[m_d\[m\]-1\] -= ieq;"
+        lappend S "        if (m_s\[m\] != 0) z\[m_s\[m\]-1\] += ieq;"
+        lappend S "    } }"
+    }
     lappend S "}"
     lappend S ""
     lappend S "pub fn main() !void {"
@@ -515,18 +642,34 @@ proc ::schem::backend::zig {cir args} {
     lappend S "        while (newton < 100) : (newton += 1) {"
     lappend S "            assemble(a\[0..\], z\[0..\]);"
     lappend S "            solve(a\[0..\], z\[0..\], SZ);"
-    if {$ND} {
+    if {$ND || $NM} {
         lappend S "            var maxd: f64 = 0;"
-        lappend S "            var d: usize = 0;"
-        lappend S "            while (d < ND) : (d += 1) {"
-        lappend S "                const vd = nv(z\[0..\], d_a\[d\]) - nv(z\[0..\], d_k\[d\]);"
-        lappend S "                var vnew = vd;"
-        lappend S "                if (d_rs\[d\] > 0) { const c = diodeComp(d, diodeV\[d\]); vnew = vd - (c.gt*vd + c.ieq)*d_rs\[d\]; }"
-        lappend S "                if (vnew - diodeV\[d\] > 0.5) vnew = diodeV\[d\] + 0.5;"
-        lappend S "                if (diodeV\[d\] - vnew > 0.5) vnew = diodeV\[d\] - 0.5;"
-        lappend S "                const dd = @abs(vnew - diodeV\[d\]); if (dd > maxd) maxd = dd;"
-        lappend S "                diodeV\[d\] = vnew;"
-        lappend S "            }"
+        if {$ND} {
+            lappend S "            var d: usize = 0;"
+            lappend S "            while (d < ND) : (d += 1) {"
+            lappend S "                const vd = nv(z\[0..\], d_a\[d\]) - nv(z\[0..\], d_k\[d\]);"
+            lappend S "                var vnew = vd;"
+            lappend S "                if (d_rs\[d\] > 0) { const c = diodeComp(d, diodeV\[d\]); vnew = vd - (c.gt*vd + c.ieq)*d_rs\[d\]; }"
+            lappend S "                if (vnew - diodeV\[d\] > 0.5) vnew = diodeV\[d\] + 0.5;"
+            lappend S "                if (diodeV\[d\] - vnew > 0.5) vnew = diodeV\[d\] - 0.5;"
+            lappend S "                const dd = @abs(vnew - diodeV\[d\]); if (dd > maxd) maxd = dd;"
+            lappend S "                diodeV\[d\] = vnew;"
+            lappend S "            }"
+        }
+        if {$NM} {
+            lappend S "            var m: usize = 0;"
+            lappend S "            while (m < NM) : (m += 1) {"
+            lappend S "                var vgs = nv(z\[0..\], m_g\[m\]) - nv(z\[0..\], m_s\[m\]);"
+            lappend S "                var vds = nv(z\[0..\], m_d\[m\]) - nv(z\[0..\], m_s\[m\]);"
+            lappend S "                if (vgs - mosfetVgs\[m\] >  0.5) vgs = mosfetVgs\[m\] + 0.5;"
+            lappend S "                if (mosfetVgs\[m\] - vgs >  0.5) vgs = mosfetVgs\[m\] - 0.5;"
+            lappend S "                if (vds - mosfetVds\[m\] >  0.5) vds = mosfetVds\[m\] + 0.5;"
+            lappend S "                if (mosfetVds\[m\] - vds >  0.5) vds = mosfetVds\[m\] - 0.5;"
+            lappend S "                const dv = @max(@abs(vgs-mosfetVgs\[m\]), @abs(vds-mosfetVds\[m\]));"
+            lappend S "                if (dv > maxd) maxd = dv;"
+            lappend S "                mosfetVgs\[m\] = vgs; mosfetVds\[m\] = vds;"
+            lappend S "            }"
+        }
         lappend S "            if (maxd < 1e-9) break;"
     } else {
         lappend S "            break;"
