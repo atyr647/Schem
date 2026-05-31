@@ -7,5 +7,8 @@ zs*[0-9].zig
 zt*[0-9].zig
 *.orig
 
+# Temp SVGs the renderer test writes.
+svgtmp*.svg
+
 # Local Zig toolchain unpacked into the repo, if any.
 zig-linux-*/

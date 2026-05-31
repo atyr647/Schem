@@ -1,0 +1,330 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns='http://www.w3.org/2000/svg' width='1476' height='3662' viewBox='0 0 1476 3662' font-family='DejaVu Sans Mono, monospace'>
+<rect x='0' y='0' width='1476' height='3662' rx='22' fill='#1c1c1c'/>
+<rect x='10' y='10' width='1456' height='3642' rx='16' fill='#242424'/>
+<text x='34' y='44' fill='#8a8a8a' font-size='22'>enigma_scrambler.schem</text>
+<path d='M 1384 32 l 8 9 l 14 -16' stroke='#8a8a8a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+<path d='M 1424 26 h 14 v 14 M 1438 26 l -20 20' stroke='#8a8a8a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+<line x1='22' y1='56' x2='1454' y2='56' stroke='#2a2a2a' stroke-width='1.5'/>
+<defs><marker id='arrow' markerWidth='10' markerHeight='10' refX='8' refY='3' orient='auto' markerUnits='userSpaceOnUse'><path d='M0,0 L8,3 L0,6 Z' fill='#9a9a9a'/></marker></defs>
+<line x1='198' y1='136' x2='278' y2='136' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<path d='M 428 266 H 583 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 266 H 353 V 884' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 396 H 353 V 1534' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 526 H 353 V 2184' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 656 H 353 V 558' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 786 H 353 V 2834' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 916 H 353 V 2314' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1046 H 353 V 3484' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1176 H 353 V 3094' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1306 H 353 V 688' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1436 H 353 V 2054' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1566 H 353 V 2704' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1696 H 353 V 2574' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1826 H 353 V 1728' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 1956 H 353 V 818' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2086 H 353 V 1208' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2216 H 353 V 2964' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2346 H 353 V 1988' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2476 H 353 V 1858' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2606 H 353 V 1078' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2736 H 353 V 428' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2866 H 353 V 2508' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 2996 H 353 V 1468' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 3126 H 353 V 3354' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<line x1='198' y1='3256' x2='278' y2='3256' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<path d='M 198 3386 H 353 V 1338' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<line x1='658' y1='266' x2='738' y2='266' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='396' x2='738' y2='396' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='526' x2='738' y2='526' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='656' x2='738' y2='656' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='786' x2='738' y2='786' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='916' x2='738' y2='916' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1046' x2='738' y2='1046' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1176' x2='738' y2='1176' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1306' x2='738' y2='1306' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1436' x2='738' y2='1436' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1566' x2='738' y2='1566' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1696' x2='738' y2='1696' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1826' x2='738' y2='1826' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='1956' x2='738' y2='1956' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2086' x2='738' y2='2086' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2216' x2='738' y2='2216' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2346' x2='738' y2='2346' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2476' x2='738' y2='2476' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2606' x2='738' y2='2606' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2736' x2='738' y2='2736' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='888' y1='136' x2='968' y2='136' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2866' x2='738' y2='2866' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='2996' x2='738' y2='2996' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='3126' x2='738' y2='3126' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='3256' x2='738' y2='3256' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<line x1='658' y1='3386' x2='738' y2='3386' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<path d='M 888 266 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 396 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 526 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 656 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 786 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 916 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1046 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1176 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1306 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1436 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1566 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1696 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1826 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 1956 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 2086 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 2216 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 2346 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 2476 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 2606 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 2736 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<line x1='1118' y1='136' x2='1198' y2='136' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<path d='M 888 2866 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 2996 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 3126 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 3256 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 888 3386 H 1273 V 168' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 396 H 583 V 298' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 526 H 583 V 428' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 656 H 583 V 558' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 786 H 583 V 688' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 916 H 583 V 818' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1046 H 583 V 948' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1176 H 583 V 1078' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1306 H 583 V 1208' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1436 H 583 V 1338' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1566 H 583 V 1468' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1696 H 583 V 1598' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1826 H 583 V 1728' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 1956 H 583 V 1858' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 2086 H 583 V 1988' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 2216 H 583 V 2118' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 2346 H 583 V 2248' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 2476 H 583 V 2378' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 2606 H 583 V 2508' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 2736 H 583 V 2638' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 2866 H 583 V 2768' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<line x1='658' y1='136' x2='738' y2='136' stroke='#9a9a9a' stroke-width='2' marker-end='url(#arrow)'/>
+<path d='M 428 2996 H 583 V 2898' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 3126 H 583 V 3028' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 3256 H 583 V 3158' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 3386 H 583 V 3288' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 428 3516 H 583 V 3418' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<path d='M 198 136 H 353 V 234' stroke='#9a9a9a' stroke-width='2' fill='none' marker-end='url(#arrow)'/>
+<rect x='278' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='143' font-size='20'><tspan fill='#d4d4d4'>GND</tspan><tspan fill='#8a8a8a'>:ground</tspan></text>
+<rect x='48' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='143' font-size='20'><tspan fill='#d4d4d4'>KEY</tspan><tspan fill='#8a8a8a'>:battery</tspan></text>
+<rect x='278' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='273' font-size='20'><tspan fill='#d4d4d4'>SC/IN#0</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='273' font-size='20'><tspan fill='#d4d4d4'>SC/IN#1</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='403' font-size='20'><tspan fill='#d4d4d4'>SC/IN#2</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='533' font-size='20'><tspan fill='#d4d4d4'>SC/IN#3</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='624' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='663' font-size='20'><tspan fill='#d4d4d4'>SC/IN#4</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='754' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='793' font-size='20'><tspan fill='#d4d4d4'>SC/IN#5</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='884' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='923' font-size='20'><tspan fill='#d4d4d4'>SC/IN#6</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1014' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1053' font-size='20'><tspan fill='#d4d4d4'>SC/IN#7</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1144' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1183' font-size='20'><tspan fill='#d4d4d4'>SC/IN#8</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1274' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1313' font-size='20'><tspan fill='#d4d4d4'>SC/IN#9</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1404' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1443' font-size='20'><tspan fill='#d4d4d4'>SC/IN#10</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1534' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1573' font-size='20'><tspan fill='#d4d4d4'>SC/IN#11</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1664' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1703' font-size='20'><tspan fill='#d4d4d4'>SC/IN#12</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1794' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1833' font-size='20'><tspan fill='#d4d4d4'>SC/IN#13</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='1924' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='1963' font-size='20'><tspan fill='#d4d4d4'>SC/IN#14</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2054' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='2093' font-size='20'><tspan fill='#d4d4d4'>SC/IN#15</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2184' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='2223' font-size='20'><tspan fill='#d4d4d4'>SC/IN#16</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2314' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='2353' font-size='20'><tspan fill='#d4d4d4'>SC/IN#17</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2444' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='2483' font-size='20'><tspan fill='#d4d4d4'>SC/IN#18</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2574' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='2613' font-size='20'><tspan fill='#d4d4d4'>SC/IN#19</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2704' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='2743' font-size='20'><tspan fill='#d4d4d4'>SC/IN#20</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2834' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='2873' font-size='20'><tspan fill='#d4d4d4'>SC/IN#21</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='2964' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='3003' font-size='20'><tspan fill='#d4d4d4'>SC/IN#22</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='3094' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='3133' font-size='20'><tspan fill='#d4d4d4'>SC/IN#23</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='3224' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='3263' font-size='20'><tspan fill='#d4d4d4'>SC/IN#24</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='3354' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='3393' font-size='20'><tspan fill='#d4d4d4'>SC/IN#25</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='403' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#0</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='533' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#1</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='624' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='663' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#2</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='754' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='793' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#3</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='884' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='923' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#4</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1014' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1053' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#5</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1144' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1183' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#6</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1274' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1313' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#7</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1404' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1443' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#8</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1534' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1573' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#9</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1664' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1703' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#10</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1794' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1833' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#11</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='1924' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='1963' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#12</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2054' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='2093' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#13</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2184' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='2223' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#14</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2314' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='2353' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#15</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2444' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='2483' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#16</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2574' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='2613' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#17</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2704' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='2743' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#18</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2834' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='2873' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#19</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='143' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#20</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='2964' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='3003' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#21</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='3094' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='3133' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#22</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='3224' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='3263' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#23</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='3354' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='3393' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#24</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='3484' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='3523' font-size='20'><tspan fill='#d4d4d4'>SC/OUT#25</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='1198' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='1212' y='143' font-size='20'><tspan fill='#d4d4d4'>LB/GND</tspan><tspan fill='#8a8a8a'>:ground</tspan></text>
+<rect x='508' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='273' font-size='20'><tspan fill='#d4d4d4'>LB/IN#0</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='403' font-size='20'><tspan fill='#d4d4d4'>LB/IN#1</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='533' font-size='20'><tspan fill='#d4d4d4'>LB/IN#2</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='624' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='663' font-size='20'><tspan fill='#d4d4d4'>LB/IN#3</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='754' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='793' font-size='20'><tspan fill='#d4d4d4'>LB/IN#4</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='884' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='923' font-size='20'><tspan fill='#d4d4d4'>LB/IN#5</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1014' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1053' font-size='20'><tspan fill='#d4d4d4'>LB/IN#6</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1144' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1183' font-size='20'><tspan fill='#d4d4d4'>LB/IN#7</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1274' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1313' font-size='20'><tspan fill='#d4d4d4'>LB/IN#8</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1404' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1443' font-size='20'><tspan fill='#d4d4d4'>LB/IN#9</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1534' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1573' font-size='20'><tspan fill='#d4d4d4'>LB/IN#10</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1664' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1703' font-size='20'><tspan fill='#d4d4d4'>LB/IN#11</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1794' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1833' font-size='20'><tspan fill='#d4d4d4'>LB/IN#12</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='1924' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='1963' font-size='20'><tspan fill='#d4d4d4'>LB/IN#13</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2054' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='2093' font-size='20'><tspan fill='#d4d4d4'>LB/IN#14</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2184' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='2223' font-size='20'><tspan fill='#d4d4d4'>LB/IN#15</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2314' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='2353' font-size='20'><tspan fill='#d4d4d4'>LB/IN#16</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2444' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='2483' font-size='20'><tspan fill='#d4d4d4'>LB/IN#17</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2574' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='2613' font-size='20'><tspan fill='#d4d4d4'>LB/IN#18</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2704' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='2743' font-size='20'><tspan fill='#d4d4d4'>LB/IN#19</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='738' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='143' font-size='20'><tspan fill='#d4d4d4'>LB/IN#20</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2834' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='2873' font-size='20'><tspan fill='#d4d4d4'>LB/IN#21</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='2964' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='3003' font-size='20'><tspan fill='#d4d4d4'>LB/IN#22</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='3094' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='3133' font-size='20'><tspan fill='#d4d4d4'>LB/IN#23</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='3224' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='3263' font-size='20'><tspan fill='#d4d4d4'>LB/IN#24</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='3354' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='522' y='3393' font-size='20'><tspan fill='#d4d4d4'>LB/IN#25</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='738' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='273' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#0</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='403' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#1</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='533' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#2</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='624' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='663' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#3</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='754' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='793' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#4</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='884' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='923' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#5</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1014' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1053' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#6</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1144' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1183' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#7</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1274' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1313' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#8</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1404' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1443' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#9</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1534' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1573' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#10</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1664' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1703' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#11</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1794' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1833' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#12</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='1924' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='1963' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#13</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2054' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='2093' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#14</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2184' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='2223' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#15</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2314' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='2353' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#16</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2444' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='2483' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#17</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2574' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='2613' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#18</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2704' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='2743' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#19</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='968' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='982' y='143' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#20</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2834' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='2873' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#21</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='2964' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='3003' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#22</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='3094' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='3133' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#23</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='3224' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='3263' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#24</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+<rect x='738' y='3354' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='3393' font-size='20'><tspan fill='#d4d4d4'>LB/LAMP#25</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+</svg>

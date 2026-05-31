@@ -26,6 +26,7 @@ proc usage {} {
     puts stderr "       schem run     BUILDER.tcl"
     puts stderr "       schem save    BUILDER.tcl OUT.schem"
     puts stderr "       schem open    FILE.schem"
+    puts stderr "       schem image   FILE.schem OUT.svg ?-grouped?"
     puts stderr "       schem edit    \[FILE.schem\]"
     puts stderr "       schem validate FILE.schem"
     puts stderr "       schem netlist FILE.schem"
@@ -119,6 +120,21 @@ switch -- $cmd {
         if {[llength $rest] != 1} { usage }
         set s [schem::load [lindex $rest 0]]
         puts [$s view]
+        exit 0
+    }
+
+    image - svg {
+        # schem image FILE.schem OUT.svg ?-grouped?
+        # Render the schematic to an SVG image (the box-and-arrow view, in the
+        # dark Code-panel style).  -grouped collapses each NAME#i bundle into a
+        # single ribbon -- the legible way to see the large bus machines.
+        if {[llength $rest] < 2} { usage }
+        lassign $rest in outp
+        set grouped 0
+        if {[lindex $rest 2] in {-grouped -g}} { set grouped 1 }
+        set s [schem::load $in]
+        set n [schem::svgFile $s $outp -grouped $grouped -title [file tail $in]]
+        puts "wrote $outp ($n bytes[expr {$grouped ? {, grouped} : {}}])"
         exit 0
     }
 

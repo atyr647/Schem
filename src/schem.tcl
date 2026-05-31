@@ -24,6 +24,7 @@ source [file join $_dir compile.tcl]
 source [file join $_dir backend.tcl]
 source [file join $_dir format.tcl]
 source [file join $_dir render.tcl]
+source [file join $_dir svg.tcl]
 source [file join $_dir validate.tcl]
 source [file join $_dir editor.tcl]
 unset _dir
