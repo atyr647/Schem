@@ -1,38 +1,32 @@
 # lib/bombe_schem.tcl --
 #
-# The Bombe as an actual Schem schematic -- the language artifact, not a
-# simulation of one.  Given a menu and a candidate rotor setting, this wires a
-# real board the engine then *solves*: the stop is read off an indicator LAMP
-# that the engine lights from its own continuity, exactly as the hardware lit
-# its relays.
+# The Bombe as an actual Schem schematic, built from bundled conductors -- the
+# language artifact, not a simulation of one.  A stop is an electrical closure
+# the engine finds by merging connected nodes, read off an indicator lamp.
 #
-# Construction (all parts, no abstraction):
-#   * One 26-wire cable per menu letter, built from a junction per wire so many
-#     conductors can share a node (the bombe's 26-way commoning).
-#   * Each menu edge is a scrambler: 26 ideal wires joining cable A's wire w to
-#     cable B's wire P(w), P being the Enigma scrambler permutation at that
-#     offset's rotor position (plugboard removed).  An involution, so the cable
-#     is bidirectional -- plain copper.
-#   * Welchman's diagonal board: cable a's wire ord(b) tied to cable b's wire
+# The board now reads like an electrician's print, thanks to the bus/bank/
+# connect drafting layer:
+#
+#   * Each menu letter is a 26-lane BUS (its cable) -- 26 real conductors.
+#   * Each menu edge is a scrambler: 26 patch wires joining cable A lane w to
+#     cable B lane S(w), S the Enigma scrambler permutation at that offset's
+#     rotor position (an involution, so plain bidirectional copper).
+#   * Welchman's diagonal board: cable a lane ord(b) tied to cable b lane
 #     ord(a), in copper.
-#   * A test battery energises one wire of the test cable through a current-
-#     limiting resistor; every wire is pulled to ground through its own high
-#     resistance, so a wire sits HIGH only if continuity ties it to the live
-#     seed.  A LAMP across the seed wire's neighbour shows the register state.
+#   * The test register's lanes each pull down through a resistor, and a BANK
+#     of 26 lamps reads the register -- the panel the operator watched.  A
+#     stiff seed drive holds every wire continuity ties to the seed at the full
+#     rail, so a single-live stop lights one bulb and a single-dead (dual) stop
+#     lights twenty-five, the lone dark bulb naming the deduced stecker.
 #
-# We expose the test cable's 26 wires as ports T0..T25 and put a lamp on a
-# chosen readout wire, so a caller can both probe the register and *see* a
-# stop.  A correct stop leaves a single wire live; we light a lamp wired to
-# detect the single-live condition on the deduced stecker wire.
+# Construction (which lanes to patch) is drafting-time arithmetic; the board it
+# leaves behind is pure Schem and round-trips through the binary .schem file.
 
 package require Tcl 8.6
 namespace eval ::bombe {}
 
-# build -- construct the schematic for one candidate setting.  Returns the
-# schematic; the caller solves it and reads `live` / the stop lamp.
-#   edges    : menu from ::bombe::menu
-#   perms    : dict offset->perm from ::bombe::scramblerPerms (this candidate)
-#   test     : central letter ; seedWire : which wire to energise (0..25)
+# build -- the schematic for one candidate setting.  edges: menu; perms: dict
+# offset->perm for this candidate; test: central letter; seedWire: 0..25.
 proc ::bombe::build {edges perms test seedWire {name bombe}} {
     set s [::schem::new $name]
     set letters [::bombe::letters $edges]
@@ -41,53 +35,56 @@ proc ::bombe::build {edges perms test seedWire {name bombe}} {
     $s add battery PWR -emf 12
     $s wire PWR.neg GND.t
 
-    # A junction per (letter,wire): the shared node every conductor on that
-    # wire attaches to.  Name: J_<letter><wire>.
-    foreach l $letters {
-        for {set w 0} {$w < 26} {incr w} {
-            $s add junction J_${l}$w
-        }
-    }
+    # One 26-lane cable per menu letter.
+    foreach l $letters { $s bus CAB_$l 26 }
 
-    # Scrambler edges: cable a wire w  <->  cable b wire P(w).
+    # Scrambler edges: cable a lane w  <->  cable b lane S(w).
     foreach e $edges {
         lassign $e off a b
         set P [dict get $perms $off]
-        for {set w 0} {$w < 26} {incr w} {
+        $s repeat w 0 25 {
             set pw [::enigma::ord [string index $P $w]]
-            $s wire J_${a}${w}.t J_${b}${pw}.t
+            $s connect CAB_${a}\[$w\] -> CAB_${b}\[$pw\]
         }
     }
 
-    # Welchman diagonal board.
+    # Welchman diagonal board: cable a lane ord(b) <-> cable b lane ord(a).
     foreach a $letters {
         set ao [::enigma::ord $a]
         foreach b $letters {
             if {$b <= $a} continue
             set bo [::enigma::ord $b]
-            $s wire J_${a}${bo}.t J_${b}${ao}.t
+            $s connect CAB_${a}\[$bo\] -> CAB_${b}\[$ao\]
         }
     }
 
-    # Pull every wire of the test cable down through its own resistor, so an
-    # un-energised wire reads ~0 V and only continuity to the seed lifts it.
-    for {set w 0} {$w < 26} {incr w} {
-        $s add resistor PD_$w -r 1e6
-        $s wire J_${test}${w}.t PD_${w}.a
-        $s wire PD_${w}.b GND.t
-        $s expose T$w J_${test}${w}.t
-    }
+    # Test register: pull every lane down so an un-energised lane reads ~0 V,
+    # and expose the lanes as T0..T25 for probing.
+    $s bank PD 26 of resistor -r 1e6
+    $s connect CAB_${test}\[*\] -> PD\[*\].a
+    $s connect PD\[*\].b -> GND.t
+    $s repeat w 0 25 { $s expose T$w [$s lane CAB_$test $w] }
 
-    # Energise the seed wire through a limiting resistor.
-    $s add resistor RIN -r 1000
+    # Stiff seed drive: a near-ideal conductor from the supply onto the seed
+    # lane, so the whole live cluster sits at the full rail regardless of size.
+    $s add resistor RIN -r 1e-3
     $s wire PWR.pos RIN.a
-    $s wire RIN.b J_${test}${seedWire}.t
+    $s wire RIN.b [$s lane CAB_$test $seedWire]
 
     return $s
 }
 
-# liveWires -- after solving, which test-cable wires are HIGH (continuity to
-# the live seed).  Threshold at half the supply.
+# addLamps -- the panel of 26 indicator bulbs, one per test-cable lane.  Built
+# as a bank and wired with connect, so it reads like the hardware lampboard.
+proc ::bombe::addLamps {s test} {
+    $s bank L_T 26 of lamp -r 2000 -ion 0.0005
+    $s repeat w 0 25 { $s connect [$s port T$w] -> L_T\[$w\].a }
+    $s connect L_T\[*\].b -> GND.t
+    set lamps {} ; for {set w 0} {$w < 26} {incr w} { lappend lamps L_T#$w }
+    return $lamps
+}
+
+# liveWires -- after solving, the test-cable lanes that are HIGH.
 proc ::bombe::liveWires {s {thr 6.0}} {
     set live {}
     foreach {pn term} [$s ports] {
@@ -97,31 +94,21 @@ proc ::bombe::liveWires {s {thr 6.0}} {
     return [lsort -integer $live]
 }
 
-# stopLamp -- add a "stop" indicator that lights on a correct stop.  A stop
-# leaves a single test-cable wire dead (the deduced non-self-stecker) or single
-# live; the simplest faithful readout is a lamp on each test wire -- the panel
-# of 26 bulbs the operator watched.  We add them as L_T0..L_T25, each lit when
-# its wire is HIGH, and return their names.  On a stop, all but one are lit (or
-# only one is) -- the odd bulb out is the answer.
-proc ::bombe::addLamps {s test} {
-    set lamps {}
-    for {set w 0} {$w < 26} {incr w} {
-        set t [$s port T$w]
-        $s add lamp L_T$w -r 2000 -ion 0.0005
-        $s wire $t L_T${w}.a
-        $s wire L_T${w}.b GND.t
-        lappend lamps L_T$w
-    }
-    return $lamps
-}
-
-# litLamps -- after solving, which readout lamps are glowing.
+# litLamps -- which readout lamps are glowing.
 proc ::bombe::litLamps {s} {
     set on {}
-    for {set w 0} {$w < 26} {incr w} {
-        if {[$s lit L_T$w]} { lappend on $w }
-    }
+    for {set w 0} {$w < 26} {incr w} { if {[$s lit L_T#$w]} { lappend on $w } }
     return $on
+}
+
+# stopLamp -- read the panel as the machine did: a stop is "not all 26 bulbs
+# the same".  Returns the deduced stecker lane (0..25) on a stop, else -1.
+proc ::bombe::stopLamp {s} {
+    set lit [::bombe::litLamps $s]
+    set n [llength $lit]
+    if {$n == 1}  { return [lindex $lit 0] }
+    if {$n == 25} { for {set w 0} {$w < 26} {incr w} { if {$w ni $lit} { return $w } } }
+    return -1
 }
 
 package provide bombe_schem 1.0

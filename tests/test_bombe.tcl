@@ -113,7 +113,10 @@ ok "board is a real circuit (>400 parts)" {[llength [$s components]] > 400}
 set s2 [::bombe::build $edges $wrong_perms E [::enigma::ord E] b_wrong]
 ::bombe::addLamps $s2 E
 $s2 solve
-ok "schematic wrong ground: no stop lamp" {[llength [::bombe::litLamps $s2]] == 0}
+# A wrong ground floods the register: with the stiff seed drive every lane
+# sits at the rail and all 26 bulbs light -- "all the same" is not a stop.
+ok "schematic wrong ground: no stop"  {[::bombe::stopLamp $s2] == -1}
+ok "schematic wrong ground: all lit"  {[llength [::bombe::litLamps $s2]] == 26}
 
 # schematic agrees with the union-find closure at the true ground
 ok "schematic live == closure live"  {[::bombe::liveWires $s] eq \
