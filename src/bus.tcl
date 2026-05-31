@@ -162,9 +162,11 @@ oo::define ::schem::Schematic {
         return __BUSGND__.t
     }
 
-    # ResolveEndpoint -- {kind terms}; kind is scalar or vector.
+    # ResolveEndpoint -- {kind terms}; kind is scalar or vector.  A bundle/
+    # component base may carry a hierarchy path with '/' (e.g. MENU/CAB_A), the
+    # same separator instancing uses, so panels can nest bundles.
     method ResolveEndpoint {ep} {
-        if {[regexp {^([A-Za-z_][A-Za-z0-9_]*)\[([^\]]+)\](?:\.([A-Za-z0-9_]+))?$} $ep -> base idx pin]} {
+        if {[regexp {^([A-Za-z_][A-Za-z0-9_/]*)\[([^\]]+)\](?:\.([A-Za-z0-9_]+))?$} $ep -> base idx pin]} {
             set indices [my ParseIndex $base $idx]
             set terms {}
             foreach i $indices {
@@ -173,10 +175,10 @@ oo::define ::schem::Schematic {
             }
             set kind [expr {($idx eq "*" || [string match *..* $idx]) ? "vector" : "scalar"}]
             return [list $kind $terms]
-        } elseif {[regexp {^([A-Za-z_][A-Za-z0-9_#]*)\.([A-Za-z0-9_]+)$} $ep -> comp pin]} {
+        } elseif {[regexp {^([A-Za-z_][A-Za-z0-9_/#]*)\.([A-Za-z0-9_]+)$} $ep -> comp pin]} {
             my ResolveTerm $comp.$pin
             return [list scalar [list $comp.$pin]]
-        } elseif {[regexp {^([A-Za-z_][A-Za-z0-9_]*)$} $ep -> name]} {
+        } elseif {[regexp {^([A-Za-z_][A-Za-z0-9_/]*)$} $ep -> name]} {
             if {[info exists Bus] && [dict exists $Bus $name]} {
                 return [list scalar [list [my lane $name 0]]]
             }

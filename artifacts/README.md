@@ -16,10 +16,25 @@ components and arrowed lines for the wires between them.
 
 | file | what it is |
 |------|-----------|
-| `enigma_scrambler.schem` | an Enigma scrambler (a 26-lane involution) feeding a 26-lamp alphabet board — press key A, lamp U lights. 107 components. |
-| `bombe_QER.schem` | the Turing bombe wired for the `WETTERVORHERSAGE` crib at the recovered ground `QER`: 18 letter-cables, the scramblers, Welchman's diagonal board, and a 26-lamp stop panel. Solve it and exactly one lamp (E) lights — the stop. 523 components. |
+| `enigma_scrambler.schem` | an Enigma scrambler (a 26-lane involution) feeding a 26-lamp alphabet board — press key A, lamp U lights. 107 components, hierarchy depth 2 (`SC/IN#0` = instance, bundle, lane). |
+| `bombe_QER.schem` | the Turing bombe wired for the `WETTERVORHERSAGE` crib at the recovered ground `QER`. Organised into panels — `POWER/`, `MENU/` (18 letter-cables + scramblers + Welchman's diagonal board), `REG/`, `LAMPS/` — so it has real zoom depth: 5 boxes at the grid level, opening down to 523 components. Solve it and exactly one lamp (E) lights — the stop. |
 
-Regenerate them from their builders:
+## Zoom levels (see `docs/ZOOM.md`)
+
+Because the boards carry panel/bundle hierarchy in their names, the renderer
+draws them at any level of detail:
+
+```sh
+bin/schem image artifacts/bombe_QER.schem out.svg -level 0   # 5 panels
+bin/schem image artifacts/bombe_QER.schem out.svg -grouped   # 18 cables (mesh)
+bin/schem image artifacts/bombe_QER.schem out.svg            # all 523 parts
+```
+
+`img/` holds rendered PNGs: `bombe_grid.png` (the 5-box overview),
+`bombe_cables.png` (the cable mesh), `enigma_scrambler.png`,
+`switch_relay_breaker.png`.
+
+Regenerate the `.schem` files from their builders:
 
 ```sh
 bin/schem save examples/enigma_scrambler.schem.tcl artifacts/enigma_scrambler.schem

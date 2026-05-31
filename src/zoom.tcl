@@ -1,88 +1,102 @@
 # zoom.tcl --
 #
-# Semantic zoom: the one idea that makes the language both simple at a glance
-# and precise to the last conductor.  It is NOT pixel scaling -- it is *level
-# of detail* along the language's own scale ladder:
+# Semantic zoom: the level-of-detail axis that makes the language both simple
+# at a glance and precise to the last conductor.  It is NOT pixel scaling -- it
+# is how deep into the schematic's own hierarchy you resolve before collapsing
+# everything that shares the remaining prefix into one box.
 #
-#     Grid  ->  Panel  ->  Circuit  ->  Bundle  ->  Component
+# That hierarchy is carried in the component names.  Instancing a circuit under
+# a prefix names parts `PREFIX/inner` (hierarchy.tcl); a bus or bank names its
+# members `NAME#i` (bus.tcl).  So a part
 #
-# A schematic already encodes that ladder in its names.  Instancing a circuit
-# under a prefix names parts `PREFIX/inner` (see hierarchy.tcl); a bus or bank
-# names its members `NAME#i` (see bus.tcl).  So a component like
+#     MENU/CAB_A#7
 #
-#     SC/IN#7
+# is a sequence of TIERS: [MENU, CAB_A, 7].  Zoom level `d` keeps the first
+# d+1 tiers as the collapse key; everything sharing that key draws as one box.
 #
-# reads as: instance `SC`, bundle `IN`, lane `7`.  Zooming out is just
-# resolving fewer of those segments before collapsing everything that shares
-# the remaining key into one box.  Zoom in and the boxes split back apart,
-# down to the individual component -- the lowest level there is.
+#     level 0  MENU            (the whole menu as one box)   -- coarsest
+#     level 1  MENU/CAB_A      (one box per cable)
+#     level 2  MENU/CAB_A#7    (every conductor)             -- finest
 #
-# Both the image renderer and the interactive editor consume this, so the
-# picture on screen and the picture you export are the same view at the same
-# depth.  Coarse control and surgical control are the same control, dialled.
+# The LANGUAGE LIMITS are the board's own depth: you cannot zoom out past the
+# top tier (level 0, the grid) nor in past the individual component (the
+# deepest tier any part has).  A flat board with no '/' or '#' has depth 0 --
+# nothing to collapse, so zoom is a no-op there, exactly as it should be.
 
 namespace eval ::schem::zoom {
-    # The named levels, coarse (0) to finest.  COMPONENT is the floor: every
-    # part stands alone.  Callers may clamp a request into this range.
-    variable LEVELS {grid panel circuit bundle component}
-    variable MAXLEVEL 4
+    # Friendly names for levels, coarse -> fine, used only for display.  A board
+    # rarely has all five; we map its actual depth onto this vocabulary.
+    variable NAMES {grid panel circuit bundle component}
+    variable SEP /
 }
 
-# key -- the collapse key for component `name` at zoom `level`: the prefix of
-# the name's hierarchy that survives at this depth.  Everything sharing a key
-# draws as one box.  The name grammar is  seg/seg/.../leaf  where the leaf may
-# carry a bundle index `base#i`.
-#
-#   level 4 component : SC/IN#7        (full name -- nothing collapsed)
-#   level 3 bundle    : SC/IN          (#i dropped -- the bundle is one ribbon)
-#   level 2 circuit   : SC/IN          (keep one path segment + the bundle)
-#   level 1 panel     : SC             (the instance)
-#   level 0 grid      : SC             (top segment only)
-#
-# A flat board with no '/' or '#' (a plain divider) has every part at its own
-# key regardless of level, so zoom never hides what was never grouped.
-proc ::schem::zoom::key {name level} {
-    # Split the hierarchy path and the bundle leaf.
+# tiers -- split a component name into its hierarchy tiers.  Only the leaf may
+# carry a bundle index (base#i), which becomes its own final tier.
+#   MENU/CAB_A#7  -> {MENU CAB_A 7}
+#   SC/IN#0       -> {SC IN 0}
+#   R1            -> {R1}
+proc ::schem::zoom::tiers {name} {
     set segs [split $name /]
     set leaf [lindex $segs end]
-    set path [lrange $segs 0 end-1]          ;# instance prefixes, if any
-    regexp {^(.+)#(\d+)$} $leaf -> base idx  ;# bundle base + lane, if any
-    if {![info exists base]} { set base $leaf }
-
-    # 4 component: the full name, nothing collapsed.
-    # 3 bundle / 2 circuit: keep the instance path + bundle base, drop the
-    #   lane index so a bus draws as one ribbon.
-    # 1 panel: collapse to the instance prefix (or the bundle base if flat).
-    # 0 grid: just the top path segment.
-    switch -- $level {
-        4 { return $name }
-        3 { return [join [concat $path [list $base]] /] }
-        2 { return [join [concat $path [list $base]] /] }
-        1 {
-            if {[llength $path] > 0} { return [join $path /] }
-            return [join [concat $path [list $base]] /]
-        }
-        0 {
-            if {[llength $path] > 0} { return [lindex $path 0] }
-            return $base
-        }
+    set path [lrange $segs 0 end-1]
+    if {[regexp {^(.+)#(\d+)$} $leaf -> base idx]} {
+        return [concat $path [list $base $idx]]
     }
-    return $name
+    return [concat $path [list $leaf]]
 }
 
-# label -- how a collapsed group prints at this level: the key, with a [n]
-# width tag when it stands for more than one component, and the representative
-# type appended as :type.  members is the list of component names in the group.
-proc ::schem::zoom::label {keyName members type level} {
-    set n [llength $members]
-    set base [lindex [split $keyName /] end]
-    if {$n > 1} { return "$base\[$n\]:$type" }
-    return "$base:$type"
+# depth -- the finest zoom level a name can be resolved to (number of tiers
+# minus one).  R1 -> 0; SC/IN#0 -> 2; MENU/CAB_A#7 -> 2.
+proc ::schem::zoom::depth {name} {
+    return [expr {[llength [::schem::zoom::tiers $name]] - 1}]
 }
 
-# groups -- collapse a schematic's components into {key -> {members type}} at a
-# given level, preserving first-seen order of keys.  The type is the
-# representative (first member's) type.
+# maxLevel -- the board's finest level: the deepest any component goes.  This
+# is the language's upper zoom limit for this board.
+proc ::schem::zoom::maxLevel {s} {
+    set m 0
+    foreach c [$s components] {
+        set d [::schem::zoom::depth $c]
+        if {$d > $m} { set m $d }
+    }
+    return $m
+}
+
+# key -- the collapse key for `name` at zoom level `level`: the first level+1
+# tiers, joined.  When the level is at or past the name's own depth the full
+# name is returned (the component stands alone).
+proc ::schem::zoom::key {name level} {
+    set t [::schem::zoom::tiers $name]
+    if {$level >= [llength $t]-1} { return $name }
+    if {$level < 0} { set level 0 }
+    return [join [lrange $t 0 $level] $::schem::zoom::SEP]
+}
+
+# leaf -- the display label of a key (its last tier).
+proc ::schem::zoom::leaf {key} {
+    return [lindex [split $key $::schem::zoom::SEP] end]
+}
+
+# clamp -- hold a requested level inside this board's language limits [0,max].
+proc ::schem::zoom::clamp {s level} {
+    set max [::schem::zoom::maxLevel $s]
+    if {$level < 0}    { return 0 }
+    if {$level > $max} { return $max }
+    return $level
+}
+
+# levelName -- map a level onto the {grid..component} vocabulary, scaled to the
+# board's depth so 0 reads "grid" and the deepest reads "component".
+proc ::schem::zoom::levelName {level {max 4}} {
+    variable NAMES
+    if {$max <= 0} { return component }
+    set idx [expr {int(round(double($level)/$max*4))}]
+    if {$idx < 0} { set idx 0 } ; if {$idx > 4} { set idx 4 }
+    return [lindex $NAMES $idx]
+}
+
+# groups -- collapse a board's components into {orderedKeys members types} at a
+# level, keeping first-seen key order.
 proc ::schem::zoom::groups {s level} {
     set order {} ; set members [dict create] ; set gtype [dict create]
     foreach c [$s components] {
@@ -94,9 +108,7 @@ proc ::schem::zoom::groups {s level} {
     return [list $order $members $gtype]
 }
 
-# edges -- the inter-group couplings at this level (deduped, self-loops
-# dropped): a connection between two groups whenever any wire joins a member of
-# one to a member of the other.  Returns a list of {ka kb}.
+# edges -- the inter-group couplings at a level (deduped, self-loops dropped).
 proc ::schem::zoom::edges {s level} {
     set seen [dict create] ; set out {}
     foreach co [$s conns] {
@@ -104,20 +116,24 @@ proc ::schem::zoom::edges {s level} {
         set ka [::schem::zoom::key [lindex [split $a .] 0] $level]
         set kb [::schem::zoom::key [lindex [split $b .] 0] $level]
         if {$ka eq $kb} continue
-        set pair [list $ka $kb]
-        if {[dict exists $seen $pair] || [dict exists $seen [list $kb $ka]]} continue
-        dict set seen $pair 1 ; lappend out $pair
+        if {[dict exists $seen [list $ka $kb]] || [dict exists $seen [list $kb $ka]]} continue
+        dict set seen [list $ka $kb] 1 ; lappend out [list $ka $kb]
     }
     return $out
 }
 
-# levelName / clampLevel -- name<->index helpers with range clamping.
-proc ::schem::zoom::levelName {level} {
-    variable LEVELS ; return [lindex $LEVELS $level]
+# childKey -- given a parent key and a finer level, the key of `name` if it is
+# a descendant of parent at that level, else "".  Used by anchored zoom to
+# follow the part under the cursor into more detail.
+proc ::schem::zoom::childKey {name parent level} {
+    set k [::schem::zoom::key $name $level]
+    if {$k eq $parent || [string match "$parent$::schem::zoom::SEP*" $k]} { return $k }
+    return ""
 }
-proc ::schem::zoom::clamp {level} {
-    variable MAXLEVEL
-    if {$level < 0} { return 0 }
-    if {$level > $MAXLEVEL} { return $MAXLEVEL }
-    return $level
+
+# parentKey -- the key one level coarser than `key` (drop its last tier).
+proc ::schem::zoom::parentKey {key} {
+    set segs [split $key $::schem::zoom::SEP]
+    if {[llength $segs] <= 1} { return $key }
+    return [join [lrange $segs 0 end-1] $::schem::zoom::SEP]
 }

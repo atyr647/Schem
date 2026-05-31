@@ -126,23 +126,26 @@ switch -- $cmd {
     image - svg {
         # schem image FILE.schem OUT.svg ?-grouped|-level N?
         # Render the schematic to an SVG image (the box-and-arrow view, in the
-        # dark Code-panel style).  Semantic zoom selects the level of detail:
-        #   -level 0  grid      (whole sub-machines as single boxes)
-        #   -level 2  circuit   (buses shown as ribbons)
-        #   -level 4  component (every part -- the flat view; the default)
-        #   -grouped  == -level 3 (bundle level)
+        # dark Code-panel style).  Semantic zoom selects the level of detail,
+        # clamped to the board's own depth (the language limits):
+        #   -level 0   the whole board in a few boxes (coarsest)
+        #   -level N   keep N+1 hierarchy tiers
+        #   -grouped   one level coarser than finest (bundles as ribbons)
+        #   (default)  finest -- every part
         if {[llength $rest] < 2} { usage }
         lassign $rest in outp
-        set level 4
+        set s [schem::load $in]
+        set max [::schem::zoom::maxLevel $s]
+        set level $max
         for {set i 2} {$i < [llength $rest]} {incr i} {
             switch -- [lindex $rest $i] {
-                -grouped - -g { set level 3 }
+                -grouped - -g { set level [expr {$max - 1}] }
                 -level - -l   { set level [lindex $rest [incr i]] }
             }
         }
-        set s [schem::load $in]
         set n [schem::svgFile $s $outp -level $level -title [file tail $in]]
-        puts "wrote $outp ($n bytes, zoom $level=[::schem::zoom::levelName [::schem::zoom::clamp $level]])"
+        set eff [::schem::zoom::clamp $s $level]
+        puts "wrote $outp ($n bytes, zoom $eff/$max=[::schem::zoom::levelName $eff $max])"
         exit 0
     }
 

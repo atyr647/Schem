@@ -16,7 +16,7 @@ oo::class create ::schem::EditorSession {
     variable S File Cur Cells Bin BinIdx Mode Status Dirty Quit
     variable WireFrom PinComp PinList PinIdx PinStage
     variable InBuf InLabel InAction InComp Report Counters
-    variable Zoom                ;# semantic zoom level: 0 grid .. 4 component
+    variable Zoom ZoomAnchor     ;# semantic zoom: level 0..maxLevel + focus key
 
     # placeable part palette and auto-name prefixes
     variable Palette
@@ -36,8 +36,9 @@ oo::class create ::schem::EditorSession {
         set WireFrom "" ; set PinComp "" ; set PinList {} ; set PinIdx 0 ; set PinStage from
         set InBuf "" ; set InLabel "" ; set InAction "" ; set InComp ""
         set Report "" ; set Counters [dict create]
-        set Zoom 4                ;# start fully zoomed in (every component)
         my Recell
+        set Zoom [::schem::zoom::maxLevel $S]   ;# start fully zoomed in
+        set ZoomAnchor ""
     }
 
     destructor { catch {$S destroy} }
@@ -49,14 +50,91 @@ oo::class create ::schem::EditorSession {
     method status {} { return $Status }
     method cursor {} { return $Cur }
     method zoom {} { return $Zoom }
+    method zoomMax {} { return [::schem::zoom::maxLevel $S] }
+    method zoomAnchor {} { return $ZoomAnchor }
 
-    # setZoom -- change the level of detail (clamped 0..4).  Coarser levels
-    # collapse instances/buses into single boxes for a wide overview; the
-    # finest level (component) is where editing happens.
+    # setZoom -- set the level of detail, clamped to the board's own depth (the
+    # language limits): 0 is the coarsest whole-board view, maxLevel the finest
+    # per-component view where editing happens.  Resets the anchor.
     method setZoom {level} {
-        set Zoom [::schem::zoom::clamp $level]
+        set Zoom [::schem::zoom::clamp $S $level]
+        set ZoomAnchor ""
         set Cur {0 0}
-        set Status "zoom: $Zoom ([::schem::zoom::levelName $Zoom])"
+        my ZoomStatus
+    }
+
+    method ZoomStatus {} {
+        set max [::schem::zoom::maxLevel $S]
+        set nm [::schem::zoom::levelName $Zoom $max]
+        set anc [expr {$ZoomAnchor ne "" ? "  @ [::schem::zoom::leaf $ZoomAnchor]" : ""}]
+        set Status "zoom $Zoom/$max ($nm)$anc"
+    }
+
+    # zoomAt -- anchored zoom: change level by `delta` while keeping the part
+    # the cursor is over in view.  Zooming IN descends into the group under the
+    # cursor (the anchor becomes that group's key); zooming OUT rises to the
+    # parent group.  This is the scroll-wheel-toward-the-pointer behaviour: the
+    # thing you point at is what you dive into or pull back from.
+    method zoomAt {delta} {
+        set max [::schem::zoom::maxLevel $S]
+        set target [::schem::zoom::clamp $S [expr {$Zoom + $delta}]]
+        if {$target == $Zoom} { my ZoomStatus ; return }
+
+        if {$delta > 0} {
+            # zoom in: anchor on the group currently under the cursor, so the
+            # finer view shows that group's children.
+            set focus [my GroupAtCursor]
+            if {$focus ne ""} { set ZoomAnchor $focus }
+        } else {
+            # zoom out: rise to the anchor's parent so the cursor's part stays
+            # framed by its enclosing block.
+            if {$ZoomAnchor ne ""} {
+                set ZoomAnchor [::schem::zoom::parentKey $ZoomAnchor]
+                if {[::schem::zoom::parentKey $ZoomAnchor] eq $ZoomAnchor && $target == 0} {
+                    set ZoomAnchor ""
+                }
+            }
+        }
+        set Zoom $target
+        my ZoomCursorToAnchor
+        my ZoomStatus
+    }
+
+    # GroupAtCursor -- the collapsed-group key the cursor currently points at in
+    # the zoom overview (or the component under the cursor at the finest level).
+    method GroupAtCursor {} {
+        if {$Zoom >= [::schem::zoom::maxLevel $S]} {
+            return [my CompAt {*}$Cur]
+        }
+        lassign [::schem::zoom::groups $S $Zoom] order members gtype
+        lassign $Cur cc cr
+        return [lindex $order $cr]
+    }
+
+    # ZoomCursorToAnchor -- after a level change, place the cursor on the row of
+    # the group that contains the anchor, so the focus stays put.
+    method ZoomCursorToAnchor {} {
+        if {$ZoomAnchor eq ""} { set Cur {0 0} ; return }
+        if {$Zoom >= [::schem::zoom::maxLevel $S]} {
+            # finest: land on a member component of the anchored group
+            lassign [::schem::zoom::groups $S [expr {$Zoom-1}]] order members gtype
+            if {[dict exists $members $ZoomAnchor]} {
+                set first [lindex [dict get $members $ZoomAnchor] 0]
+                set rc [dict get $Cells $first]
+                if {$rc ne ""} { set Cur $rc ; return }
+            }
+            set Cur {0 0} ; return
+        }
+        lassign [::schem::zoom::groups $S $Zoom] order members gtype
+        set i 0
+        foreach k $order {
+            # the anchor is this row if it equals the row key or descends from it
+            if {$k eq $ZoomAnchor || [string match "$k/*" $ZoomAnchor] || [string match "$ZoomAnchor*" $k]} {
+                set Cur [list 0 $i] ; return
+            }
+            incr i
+        }
+        set Cur {0 0}
     }
 
     # Recell -- (re)derive the integer cell grid from the model and commit
@@ -128,8 +206,8 @@ oo::class create ::schem::EditorSession {
             S         { my DoSaveStart }
             o         { my DoOpenStart }
             "?"       { set Report [my HelpText] ; set Mode report }
-            "+" - "=" { my setZoom [expr {$Zoom+1}] }
-            "-" - "_" { my setZoom [expr {$Zoom-1}] }
+            "+" - "=" { my zoomAt 1 }
+            "-" - "_" { my zoomAt -1 }
             ESC       { if {$WireFrom ne ""} { set WireFrom "" ; set Status "wire cancelled" } }
             q         { set Quit 1 }
             default {
@@ -296,16 +374,18 @@ press any key to close"
         if {$cr >= [llength $order]} { set cr [expr {[llength $order]-1}] }
         if {$cr < 0} { set cr 0 }
         set Cur [list 0 $cr]
+        set max [::schem::zoom::maxLevel $S]
         set out {}
-        lappend out "level $Zoom = [::schem::zoom::levelName $Zoom]   ([llength $order] groups, [llength [$S components]] components)"
+        lappend out "level $Zoom/$max ([::schem::zoom::levelName $Zoom $max])   ([llength $order] groups, [llength [$S components]] components)"
         set i 0
         foreach k $order {
             set n [llength [dict get $members $k]]
-            set base [lindex [split $k /] end]
+            set base [::schem::zoom::leaf $k]
             set lbl [expr {$n > 1 ? "$base\[$n\]" : $base}]
             set d [expr {[dict exists $deg $k] ? [dict get $deg $k] : 0}]
-            set mark [expr {$i == $cr ? [format %c 0x25B6] : " "}]
-            lappend out [format "  %s %-22s %-10s  links:%d" $mark $lbl:[dict get $gtype $k] "" $d]
+            set onanchor [expr {$ZoomAnchor ne "" && ($k eq $ZoomAnchor || [string match "$k/*" $ZoomAnchor])}]
+            set mark [expr {$i == $cr ? [format %c 0x25B6] : ($onanchor ? "*" : " ")}]
+            lappend out [format "  %s %-24s links:%d" $mark $lbl:[dict get $gtype $k] $d]
             incr i
         }
         return $out
@@ -325,7 +405,7 @@ press any key to close"
 
         # canvas: at the finest zoom (component) draw the full editable board;
         # at coarser zooms draw the collapsed semantic-zoom overview.
-        if {$Zoom >= 4} {
+        if {$Zoom >= [::schem::zoom::maxLevel $S]} {
             set canvas [::schem::DrawCanvas $S $Cells \
                 [list cursor $Cur showEmpty 1 extraCols 1 extraRows 1]]
         } else {

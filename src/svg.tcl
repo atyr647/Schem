@@ -129,24 +129,29 @@ proc ::schem::render::Wire {x1 y1 x2 y2 acol arow bcol brow} {
 # component's own name if it is not part of a bundle.  (Kept for compatibility;
 # the zoom module generalises this to the whole scale ladder.)
 proc ::schem::render::groupOf {name} {
-    return [::schem::zoom::key $name 3]
+    return [::schem::zoom::key $name [expr {[::schem::zoom::depth $name]-1}]]
 }
 
 # svgGrouped -- the SVG for a semantic-zoom view of $s at a given level.  The
-# level (grid 0 .. component 4) decides how much of each component's hierarchy
-# is resolved before collapsing; level 3 (bundle) is the old "grouped" view.
+# level (0 coarsest .. maxLevel finest) decides how much of each component's
+# hierarchy is resolved before collapsing.  Requests are clamped to the board's
+# own depth -- the language limits.
 proc ::schem::svgGrouped {s args} {
     variable render::PAL ; variable render::BW ; variable render::BH
     variable render::COLW ; variable render::ROWH ; variable render::MARGIN
     variable render::HEADER
-    set title [$s name] ; set level 3 ; set perRow 6
+    # Default to one level coarser than the finest -- the bundle/ribbon view,
+    # where each bus collapses to a single cable.  An explicit -level overrides.
+    set title [$s name] ; set reqlevel "" ; set perRow 6
     foreach {k v} $args {
         switch -- $k {
             -title { set title $v }
-            -level { set level [::schem::zoom::clamp $v] }
+            -level { set reqlevel $v }
             -cols  { set perRow $v }
         }
     }
+    if {$reqlevel eq ""} { set reqlevel [expr {[::schem::zoom::maxLevel $s] - 1}] }
+    set level [::schem::zoom::clamp $s $reqlevel]
 
     # Collapse to groups + inter-group edges at this zoom level.
     lassign [::schem::zoom::groups $s $level] groups members gtype
@@ -222,21 +227,24 @@ proc ::schem::svgGrouped {s args} {
 }
 
 # svgFile -- write the SVG to a file; returns the byte count.
-#   -grouped 1     bundle-level (zoom level 3) view
-#   -level N        an explicit zoom level (0 grid .. 4 component); when given,
-#                   selects the zoom renderer.  Level 4 is the flat view.
-# With neither, the flat per-component view is drawn.
+#   -level N    an explicit zoom level (0 coarsest .. maxLevel finest),
+#               clamped to the board's depth (the language limits).  At the
+#               finest level the flat per-component view is drawn.
+#   -grouped 1  one level coarser than the finest (the bundle/ribbon view).
+# With neither, the finest (flat) view is drawn.
 proc ::schem::svgFile {s path args} {
     set grouped 0 ; set level "" ; set pass {}
     foreach {k v} $args {
         switch -- $k {
             -grouped { set grouped $v }
-            -level   { set level [::schem::zoom::clamp $v] }
+            -level   { set level $v }
             default  { lappend pass $k $v }
         }
     }
-    if {$level eq ""} { set level [expr {$grouped ? 3 : 4}] }
-    if {$level >= 4} {
+    set max [::schem::zoom::maxLevel $s]
+    if {$level eq ""} { set level [expr {$grouped ? $max-1 : $max}] }
+    set level [::schem::zoom::clamp $s $level]
+    if {$level >= $max} {
         set svg [::schem::svg $s {*}$pass]
     } else {
         set svg [::schem::svgGrouped $s -level $level {*}$pass]

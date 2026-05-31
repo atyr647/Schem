@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns='http://www.w3.org/2000/svg' width='1246' height='282' viewBox='0 0 1246 282' font-family='DejaVu Sans Mono, monospace'>
+<rect x='0' y='0' width='1246' height='282' rx='22' fill='#1c1c1c'/>
+<rect x='10' y='10' width='1226' height='262' rx='16' fill='#242424'/>
+<text x='34' y='44' fill='#8a8a8a' font-size='22'>bombe_QER.schem</text>
+<path d='M 1154 32 l 8 9 l 14 -16' stroke='#8a8a8a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+<path d='M 1194 26 h 14 v 14 M 1208 26 l -20 20' stroke='#8a8a8a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+<line x1='22' y1='56' x2='1224' y2='56' stroke='#2a2a2a' stroke-width='1.5'/>
+<defs><marker id='arrow' markerWidth='10' markerHeight='10' refX='8' refY='3' orient='auto' markerUnits='userSpaceOnUse'><path d='M0,0 L8,3 L0,6 Z' fill='#9a9a9a'/></marker></defs>
+<path d='M 353 136 C 353 136 123 136 123 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 136 813 136 813 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 136 123 136 123 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 136 C 353 136 583 136 583 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 136 1043 136 1043 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 136 123 136 123 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<rect x='48' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='143' font-size='18'><tspan fill='#d4d4d4'>GND</tspan><tspan fill='#8a8a8a'>:ground</tspan></text>
+<rect x='278' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='283' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='292' y='143' font-size='18'><tspan fill='#d4d4d4'>POWER[2]</tspan><tspan fill='#8a8a8a'>:battery</tspan></text>
+<rect x='508' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='513' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='522' y='143' font-size='18'><tspan fill='#d4d4d4'>MENU[468]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='738' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='743' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='752' y='143' font-size='18'><tspan fill='#d4d4d4'>REG[26]</tspan><tspan fill='#8a8a8a'>:resistor</tspan></text>
+<rect x='968' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='973' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='982' y='143' font-size='18'><tspan fill='#d4d4d4'>LAMPS[26]</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+</svg>
