@@ -16,6 +16,7 @@ oo::class create ::schem::EditorSession {
     variable S File Cur Cells Bin BinIdx Mode Status Dirty Quit
     variable WireFrom PinComp PinList PinIdx PinStage
     variable InBuf InLabel InAction InComp Report Counters
+    variable Zoom                ;# semantic zoom level: 0 grid .. 4 component
 
     # placeable part palette and auto-name prefixes
     variable Palette
@@ -35,6 +36,7 @@ oo::class create ::schem::EditorSession {
         set WireFrom "" ; set PinComp "" ; set PinList {} ; set PinIdx 0 ; set PinStage from
         set InBuf "" ; set InLabel "" ; set InAction "" ; set InComp ""
         set Report "" ; set Counters [dict create]
+        set Zoom 4                ;# start fully zoomed in (every component)
         my Recell
     }
 
@@ -46,6 +48,16 @@ oo::class create ::schem::EditorSession {
     method mode {} { return $Mode }
     method status {} { return $Status }
     method cursor {} { return $Cur }
+    method zoom {} { return $Zoom }
+
+    # setZoom -- change the level of detail (clamped 0..4).  Coarser levels
+    # collapse instances/buses into single boxes for a wide overview; the
+    # finest level (component) is where editing happens.
+    method setZoom {level} {
+        set Zoom [::schem::zoom::clamp $level]
+        set Cur {0 0}
+        set Status "zoom: $Zoom ([::schem::zoom::levelName $Zoom])"
+    }
 
     # Recell -- (re)derive the integer cell grid from the model and commit
     # those positions back, so the model's positions are the editor grid.
@@ -116,6 +128,8 @@ oo::class create ::schem::EditorSession {
             S         { my DoSaveStart }
             o         { my DoOpenStart }
             "?"       { set Report [my HelpText] ; set Mode report }
+            "+" - "=" { my setZoom [expr {$Zoom+1}] }
+            "-" - "_" { my setZoom [expr {$Zoom-1}] }
             ESC       { if {$WireFrom ne ""} { set WireFrom "" ; set Status "wire cancelled" } }
             q         { set Quit 1 }
             default {
@@ -264,6 +278,39 @@ press any key to close"
     }
 
     # ---- rendering -------------------------------------------------
+    # ZoomOverview -- the collapsed view at the current (coarse) zoom level: a
+    # box per group (an instance, a circuit, a bus -- whatever the level keeps),
+    # labelled NAME[n]:type, with a degree count of how many other groups it
+    # wires to.  The cursor (row) selects a group; '+' drills into it.  This is
+    # the wide, coarse control -- a minimap over the same board the component
+    # level edits in full.
+    method ZoomOverview {} {
+        lassign [::schem::zoom::groups $S $Zoom] order members gtype
+        # degree: distinct neighbour groups
+        set deg [dict create]
+        foreach pr [::schem::zoom::edges $S $Zoom] {
+            lassign $pr a b
+            dict incr deg $a ; dict incr deg $b
+        }
+        lassign $Cur cc cr
+        if {$cr >= [llength $order]} { set cr [expr {[llength $order]-1}] }
+        if {$cr < 0} { set cr 0 }
+        set Cur [list 0 $cr]
+        set out {}
+        lappend out "level $Zoom = [::schem::zoom::levelName $Zoom]   ([llength $order] groups, [llength [$S components]] components)"
+        set i 0
+        foreach k $order {
+            set n [llength [dict get $members $k]]
+            set base [lindex [split $k /] end]
+            set lbl [expr {$n > 1 ? "$base\[$n\]" : $base}]
+            set d [expr {[dict exists $deg $k] ? [dict get $deg $k] : 0}]
+            set mark [expr {$i == $cr ? [format %c 0x25B6] : " "}]
+            lappend out [format "  %s %-22s %-10s  links:%d" $mark $lbl:[dict get $gtype $k] "" $d]
+            incr i
+        }
+        return $out
+    }
+
     method render {} {
         set out {}
         set star [expr {$Dirty ? "*" : ""}]
@@ -276,9 +323,14 @@ press any key to close"
             return [join $out \n]
         }
 
-        # canvas with cursor + empty slots
-        set canvas [::schem::DrawCanvas $S $Cells \
-            [list cursor $Cur showEmpty 1 extraCols 1 extraRows 1]]
+        # canvas: at the finest zoom (component) draw the full editable board;
+        # at coarser zooms draw the collapsed semantic-zoom overview.
+        if {$Zoom >= 4} {
+            set canvas [::schem::DrawCanvas $S $Cells \
+                [list cursor $Cur showEmpty 1 extraCols 1 extraRows 1]]
+        } else {
+            set canvas [my ZoomOverview]
+        }
         foreach ln $canvas { lappend out $ln }
         lappend out [string repeat [format %c 0x2500] 60]
 
@@ -306,7 +358,7 @@ press any key to close"
             lappend out "cursor: [lindex $Cur 0],[lindex $Cur 1]   mode: $Mode$wf"
         }
         lappend out "status: $Status"
-        lappend out "keys: move=hjkl/arrows  place=p  wire=w  param=e  solve=s  validate=v  save=S  open=o  help=?  quit=q"
+        lappend out "keys: move=hjkl/arrows  place=p  wire=w  param=e  solve=s  validate=v  zoom=+/-  save=S  open=o  help=?  quit=q"
         return [join $out \n]
     }
 }

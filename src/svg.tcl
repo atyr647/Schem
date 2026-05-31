@@ -126,45 +126,37 @@ proc ::schem::render::Wire {x1 y1 x2 y2 acol arow bcol brow} {
 # ----------------------------------------------------------------------
 
 # groupOf -- the bundle name a component belongs to (NAME from NAME#i), or the
-# component's own name if it is not part of a bundle.
+# component's own name if it is not part of a bundle.  (Kept for compatibility;
+# the zoom module generalises this to the whole scale ladder.)
 proc ::schem::render::groupOf {name} {
-    if {[regexp {^(.+)#\d+$} $name -> base]} { return $base }
-    return $name
+    return [::schem::zoom::key $name 3]
 }
 
-# svgGrouped -- the SVG for a bundle-collapsed view of $s.
+# svgGrouped -- the SVG for a semantic-zoom view of $s at a given level.  The
+# level (grid 0 .. component 4) decides how much of each component's hierarchy
+# is resolved before collapsing; level 3 (bundle) is the old "grouped" view.
 proc ::schem::svgGrouped {s args} {
     variable render::PAL ; variable render::BW ; variable render::BH
     variable render::COLW ; variable render::ROWH ; variable render::MARGIN
     variable render::HEADER
-    set title [$s name]
-    foreach {k v} $args { if {$k eq "-title"} { set title $v } }
+    set title [$s name] ; set level 3 ; set perRow 6
+    foreach {k v} $args {
+        switch -- $k {
+            -title { set title $v }
+            -level { set level [::schem::zoom::clamp $v] }
+            -cols  { set perRow $v }
+        }
+    }
 
-    # Build a reduced schematic of groups: one node per bundle/loose part.
-    set members [dict create]   ;# group -> list of member component names
-    set gtype   [dict create]   ;# group -> representative type
-    foreach c [$s components] {
-        set g [::schem::render::groupOf $c]
-        dict lappend members $g $c
-        dict set gtype $g [$s typeof $c]
-    }
-    # group-level edges (dedup), from any lane-to-lane wire between two groups
+    # Collapse to groups + inter-group edges at this zoom level.
+    lassign [::schem::zoom::groups $s $level] groups members gtype
     set gedges [dict create]
-    foreach co [$s conns] {
-        lassign $co a b
-        set ga [::schem::render::groupOf [lindex [split $a .] 0]]
-        set gb [::schem::render::groupOf [lindex [split $b .] 0]]
-        if {$ga eq $gb} continue
-        dict set gedges [list $ga $gb] 1
-    }
+    foreach pair [::schem::zoom::edges $s $level] { dict set gedges $pair 1 }
 
     # Grid layout over the groups.  A bus machine is a mesh (every cable wires
     # to many others), so a longest-path layout degenerates into one enormous
     # row; instead we wrap the groups into a fixed-width grid -- legible, and
     # honest about the fact that these bundles form a fabric, not a pipeline.
-    set groups [lsort [dict keys $members]]
-    set perRow 6
-    foreach {k v} $args { if {$k eq "-cols"} { set perRow $v } }
     set cells [dict create] ; set maxc 0 ; set maxr 0 ; set i 0
     foreach g $groups {
         set col [expr {$i % $perRow}] ; set row [expr {$i / $perRow}]
@@ -211,10 +203,13 @@ proc ::schem::svgGrouped {s args} {
         lassign $cellrc col row
         set x [expr {$MARGIN + $col*$COLW}]
         set y [expr {$MARGIN + $HEADER + $row*$ROWH}]
-        set n [llength [dict get $members $g]]
+        set mem [dict get $members $g]
+        set n [llength $mem]
         set type [dict get $gtype $g]
-        set label [expr {$n > 1 ? "$g\[$n\]" : $g}]
-        # bundles get a doubled left edge to read as a ribbon/cable
+        set base [lindex [split $g /] end]
+        set label [expr {$n > 1 ? "$base\[$n\]" : $base}]
+        # collapsed groups (more than one member) get a doubled edge to read as
+        # a ribbon/cable rather than a single component.
         lappend out "<rect x='$x' y='$y' width='$BW' height='$BH' rx='6' fill='$PAL(panel)' stroke='$PAL(stroke)' stroke-width='2'/>"
         if {$n > 1} {
             lappend out "<rect x='[expr {$x+5}]' y='[expr {$y+5}]' width='[expr {$BW-10}]' height='[expr {$BH-10}]' rx='4' fill='none' stroke='$PAL(dim)' stroke-width='1'/>"
@@ -226,14 +221,26 @@ proc ::schem::svgGrouped {s args} {
     return [join $out \n]
 }
 
-# svgFile -- write the SVG to a file; returns the byte count.  -grouped uses
-# the bundle-collapsed view.
+# svgFile -- write the SVG to a file; returns the byte count.
+#   -grouped 1     bundle-level (zoom level 3) view
+#   -level N        an explicit zoom level (0 grid .. 4 component); when given,
+#                   selects the zoom renderer.  Level 4 is the flat view.
+# With neither, the flat per-component view is drawn.
 proc ::schem::svgFile {s path args} {
-    set grouped 0 ; set pass {}
+    set grouped 0 ; set level "" ; set pass {}
     foreach {k v} $args {
-        if {$k eq "-grouped"} { set grouped $v } else { lappend pass $k $v }
+        switch -- $k {
+            -grouped { set grouped $v }
+            -level   { set level [::schem::zoom::clamp $v] }
+            default  { lappend pass $k $v }
+        }
     }
-    set svg [expr {$grouped ? [::schem::svgGrouped $s {*}$pass] : [::schem::svg $s {*}$pass]}]
+    if {$level eq ""} { set level [expr {$grouped ? 3 : 4}] }
+    if {$level >= 4} {
+        set svg [::schem::svg $s {*}$pass]
+    } else {
+        set svg [::schem::svgGrouped $s -level $level {*}$pass]
+    }
     set fh [open $path w] ; puts $fh $svg ; close $fh
     return [string length $svg]
 }
