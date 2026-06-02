@@ -5,10 +5,15 @@
 #
 #   tclsh examples/power_supply.tcl
 #
-# It builds a simple DC supply path (source -> rectifier diode -> reservoir ->
-# load), then asks the question that matters: are the PARTS right?  The same
-# circuit passes or fails depending on whether the diode can take the current
-# -- which is exactly what the ratings review catches.
+# It builds a simple DC supply path -- a series PROTECTION diode (reverse-
+# polarity / blocking) feeding a reservoir cap and a load -- then asks the
+# question that matters: are the PARTS right?  The same circuit passes or
+# fails depending on whether the diode can take the current, which is exactly
+# what the ratings review catches.
+#
+# NOTE: this is a DC rail with a series blocking diode, NOT a rectifier.
+# Rectification converts AC to DC and needs an AC source -- see
+# examples/ac_dc_supply.tcl for a real full-wave bridge rectifier.
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
 source [file join $here .. lib parts.tcl]
@@ -17,9 +22,9 @@ source [file join $here .. lib ratings.tcl]
 proc rule {t} { puts "\n========== $t ==========" }
 
 # --------------------------------------------------------------------
-rule "A 12 V rail: rectifier + reservoir + 47 ohm load"
+rule "A 12 V rail: series blocking diode + reservoir + 47 ohm load"
 # --------------------------------------------------------------------
-# 1N4007 (1000 V, 1 A) is the textbook mains-grade rectifier; here it feeds a
+# 1N4007 (1000 V, 1 A) as a reverse-polarity protection diode; it feeds a
 # 470 uF reservoir and a 47 ohm load drawing ~0.25 A.  Well within ratings.
 set s [schem::new rail12]
 $s add battery SRC -emf 12
@@ -36,7 +41,7 @@ puts "Vout = [format %.2f [$s probe RL.a]] V   Iload = [format %.3f [$s current 
 puts [::schem::ratings::report $s]
 
 # --------------------------------------------------------------------
-rule "Same rail, WRONG diode: a 1N4148 small-signal part"
+rule "WRONG part: a 200 mA signal diode on a 0.25 A rail"
 # --------------------------------------------------------------------
 # The math is identical -- but a 1N4148 is a 200 mA signal diode.  At a quarter
 # amp it is 20% over its forward-current rating and cooks.  This is the failure

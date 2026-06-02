@@ -22,6 +22,7 @@ wm deiconify .
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
 source [file join $here .. src symbols.tcl]
+source [file join $here .. src ksym.tcl]
 source [file join $here .. lib parts.tcl]
 source [file join $here .. lib ratings.tcl]
 source [file join $here .. src gui.tcl]

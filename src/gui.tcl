@@ -702,7 +702,7 @@ oo::class create ::schem::gui::App {
         }
         # symbol preview
         set cx 48
-        ::schem::sym::draw $Parts $type $cx $cy -scale 0.42 -standard $Std \
+        ::schem::sym::draw2 $Parts $type $cx $cy -scale 0.42 -standard $Std \
             -color $T(symbol) -tags $tag
         if {$partid ne ""} {
             $Parts create text 72 [expr {$cy-6}] -text $partid -anchor w \
@@ -788,7 +788,7 @@ oo::class create ::schem::gui::App {
             canvas $g.c -width 80 -height 56 -bg $T(raised) -highlightthickness 1 \
                 -highlightbackground $T(accent)
             pack $g.c
-            ::schem::sym::draw $g.c [dict get $Drag type] 40 28 -scale 0.7 \
+            ::schem::sym::draw2 $g.c [dict get $Drag type] 40 28 -scale 0.7 \
                 -standard $Std -color $T(ink)
         }
         wm geometry $g +[expr {$X+12}]+[expr {$Y+12}]
@@ -951,7 +951,7 @@ oo::class create ::schem::gui::App {
         set val [my ValueText $name]
         set color [my ComponentColor $name]
         set state [expr {![catch {$S get $name state} st] ? $st : ""}]
-        set sym [::schem::sym::draw $Canvas $type $x $y -scale [expr {1.2*$Zoom}] -standard $Std \
+        set sym [::schem::sym::draw2 $Canvas $type $x $y -scale [expr {1.2*$Zoom}] -standard $Std \
             -rot $rot -tags [list comp comp_$name] -color $color -label $name -value $val -state $state]
         # pin dots + record absolute positions
         set abspins [dict create]
