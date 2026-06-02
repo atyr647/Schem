@@ -48,7 +48,8 @@ oo::define ::schem::gui::App {
     method DialogSave {body ext} {
         set f [tk_getSaveFile -defaultextension $ext]
         if {$f eq ""} return
-        set fh [open $f w] ; puts $fh $body ; close $fh
+        # UTF-8: exported netlists/SVG carry Ω/µ regardless of the system locale.
+        set fh [open $f w] ; fconfigure $fh -encoding utf-8 ; puts $fh $body ; close $fh
         my SetStatus "Saved $f"
     }
 

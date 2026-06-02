@@ -53,7 +53,10 @@ proc ::schem::ksym::load {{path ""}} {
         variable DIR
         set path [file join $DIR .. .. lib symbols standard.kicad_lib]
     }
-    set fh [open $path r] ; set lines [split [read $fh] \n] ; close $fh
+    # The library is UTF-8 (symbol/field text carries Ω/µ); decode it as such
+    # even when the system encoding is iso8859-1 (non-UTF-8 locale on Tcl 9).
+    set fh [open $path r] ; fconfigure $fh -encoding utf-8
+    set lines [split [read $fh] \n] ; close $fh
     set type "" ; set cur ""
     foreach ln $lines {
         if {[string match "SCHEMTYPE *" $ln]} {

@@ -280,8 +280,10 @@ proc ::schem::pcb::manufacturability {s} {
 # files written and any manufacturability warnings.
 proc ::schem::pcb::export {s base} {
     set netf "$base.net" ; set bomf "$base.csv"
-    set fh [open $netf w] ; puts $fh [::schem::pcb::kicadNetlist $s] ; close $fh
-    set fh [open $bomf w] ; puts $fh [::schem::pcb::bomCsv $s] ; close $fh
+    # Force UTF-8: values carry Ω/µ, which the system encoding may not cover
+    # (e.g. iso8859-1 under a non-UTF-8 locale on Tcl 9).
+    set fh [open $netf w] ; fconfigure $fh -encoding utf-8 ; puts $fh [::schem::pcb::kicadNetlist $s] ; close $fh
+    set fh [open $bomf w] ; fconfigure $fh -encoding utf-8 ; puts $fh [::schem::pcb::bomCsv $s] ; close $fh
     return [dict create netlist $netf bom $bomf \
         warnings [::schem::pcb::manufacturability $s]]
 }
