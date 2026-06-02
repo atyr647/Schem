@@ -22,7 +22,7 @@
 # sweep is meant to run compiled -- emits the scan as Zig.  The Enigma oracle
 # (lib/enigma.tcl) makes the crib and checks the recovered key.
 
-package require Tcl 8.6
+package require Tcl 8.6-
 namespace eval ::bombe {}
 
 # ----------------------------------------------------------------------
