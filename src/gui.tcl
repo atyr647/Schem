@@ -88,7 +88,8 @@ oo::class create ::schem::gui::App {
     variable Tbar       ;# the custom toolbar canvas
     variable TbarW      ;# last toolbar width (resize debounce)
     variable TbarBusy   ;# reentrancy guard for DrawToolbar
-    variable Parts      ;# parts-bin tree
+    variable Parts      ;# parts-bin canvas
+    variable Catbar     ;# parts-bin category-chip canvas
     variable Insp       ;# inspector frame
     variable Status     ;# status bar text var (array-backed)
     variable File       ;# current .schem path ("" if unsaved)
@@ -99,18 +100,22 @@ oo::class create ::schem::gui::App {
     variable Wires      ;# list of {from to id}  (terminal a -> terminal b)
     variable Sel        ;# selected component name ("" if none)
     variable Counter    ;# per-type auto-name counter
-    variable Grid       ;# snap grid in px
+    variable Grid       ;# snap grid in px (world units)
+    variable Zoom       ;# canvas zoom factor (1.0 = 100%)
     variable PendWire   ;# wire-in-progress: starting terminal or ""
     variable Pending    ;# armed placement: {primitive TYPE} | {part ID} | ""
     variable Result     ;# last solve result flag
     variable StatusChip ;# status-bar state chip widget
+    variable BinQuery   ;# parts-bin search text
+    variable BinCat     ;# parts-bin active category filter ("all" or a name)
+    variable Drag       ;# in-progress drag-from-bin: dict or ""
 
     constructor {{schem {}} {parent {}}} {
         if {$schem eq ""} { set S [::schem::new untitled] } else { set S $schem }
         set File "" ; set Dirty 0 ; set Std ansi ; set Tool select
         set Placed [dict create] ; set Wires {} ; set Sel ""
         set Counter [dict create] ; set Grid 20 ; set PendWire "" ; set Result none
-        set Pending ""
+        set Pending "" ; set Zoom 1.0 ; set BinQuery "" ; set BinCat all ; set Drag ""
         my BuildUI [expr {$parent eq "" ? "." : $parent}]
         if {$schem ne ""} {
             # opened with an existing board -- lay it out on the canvas
@@ -235,6 +240,10 @@ oo::class create ::schem::gui::App {
         bind $Win <Key-Delete> [my callback Cmd delete]
         bind $Win <Key-r>     [my callback Cmd rotate]
         bind $Win <Key-t>     [my callback Cmd togglestd]
+        bind $Win <Key-plus>  [my callback ZoomIn]
+        bind $Win <Key-equal> [my callback ZoomIn]
+        bind $Win <Key-minus> [my callback ZoomOut]
+        bind $Win <Key-0>     [my callback ZoomReset]
     }
 
     # A custom-drawn toolbar: rounded "pill" buttons with little glyph icons,
@@ -363,18 +372,29 @@ oo::class create ::schem::gui::App {
 
     method BuildPartsBin {parent} {
         variable ::schem::gui::T
-        set f [frame $parent.bin -bg $T(surface) -width 248]
+        set f [frame $parent.bin -bg $T(surface) -width 250]
         pack $f -side left -fill y
         pack propagate $f 0
-        # header with a subtle search field
-        set hd [frame $f.hd -bg $T(surface)]
-        pack $hd -side top -fill x
-        label $hd.h -text "Parts" -bg $T(surface) -fg $T(ink) -anchor w \
+        # title
+        label $f.h -text "Parts" -bg $T(surface) -fg $T(ink) -anchor w \
             -font $::schem::gui::FONTTITLE -padx 14
-        pack $hd.h -side top -fill x -pady {12 2}
-        label $hd.sub -text "click a part, then click the board" -bg $T(surface) -fg $T(faint) \
-            -anchor w -font $::schem::gui::FONTSM -padx 14
-        pack $hd.sub -side top -fill x -pady {0 8}
+        pack $f.h -side top -fill x -pady {12 6}
+        # search field (rounded, with a magnifier glyph)
+        set sf [frame $f.sf -bg $T(surface)]
+        pack $sf -side top -fill x -padx 12 -pady {0 8}
+        set sbox [frame $sf.box -bg $T(raised) -highlightthickness 1 \
+            -highlightbackground $T(edge) -highlightcolor $T(accent)]
+        pack $sbox -fill x
+        label $sbox.ic -text "⌕" -bg $T(raised) -fg $T(dim) -font {"DejaVu Sans" 11}
+        pack $sbox.ic -side left -padx {8 2}
+        set ent [entry $sbox.e -bg $T(raised) -fg $T(ink) -insertbackground $T(ink) \
+            -relief flat -font $::schem::gui::FONT -textvariable [my varname BinQuery]]
+        pack $ent -side left -fill x -expand 1 -pady 4 -padx {0 6}
+        bind $ent <KeyRelease> [my callback PopulateParts]
+        # category filter chips (a horizontally scrolling row)
+        set Catbar [canvas $f.cat -bg $T(surface) -height 30 -highlightthickness 0 -bd 0]
+        pack $Catbar -side top -fill x -padx 8
+        bind $Catbar <Configure> [my callback OnCatbarConfigure %w]
         # scrollable canvas of symbol rows
         set tree [frame $f.tree -bg $T(surface)]
         pack $tree -side top -fill both -expand 1
@@ -385,11 +405,47 @@ oo::class create ::schem::gui::App {
         $Parts configure -yscrollcommand [list $tree.sb set]
         pack $tree.sb -side right -fill y
         pack $Parts -side left -fill both -expand 1
-        # scroll wheel
         bind $Parts <Button-4> [list $Parts yview scroll -2 units]
         bind $Parts <Button-5> [list $Parts yview scroll 2 units]
         bind $Parts <MouseWheel> [list $Parts yview scroll {%D -120 /} units]
+        my DrawCatbar
         my PopulateParts
+    }
+
+    # category chips: All + one per group, so a click jumps straight to a
+    # section instead of scrolling.
+    method DrawCatbar {} {
+        variable ::schem::gui::T
+        if {![winfo exists $Catbar]} return
+        $Catbar delete all
+        set avail [winfo width $Catbar] ; if {$avail < 50} { set avail 226 }
+        set x 4 ; set y 4 ; set h 20 ; set rows 1
+        foreach {key label} [linsert [concat {*}[lmap c [::schem::parts::categories] {list $c [my TitleCase $c]}]] 0 all All basics Basics] {
+            set on [expr {$BinCat eq $key}]
+            set w [expr {[font measure $::schem::gui::FONTSM $label]+18}]
+            if {$x+$w > $avail-4 && $x > 4} { set x 4 ; incr y [expr {$h+5}] ; incr rows }
+            set fill [expr {$on ? $T(accent2) : $T(raised)}]
+            set fg   [expr {$on ? "white" : $T(dim)}]
+            set tag "cat_$key"
+            set id [::schem::gui::roundrect $Catbar $x $y [expr {$x+$w}] [expr {$y+$h}] 9 \
+                -fill $fill -outline "" -tags $tag]
+            $Catbar create text [expr {$x+$w/2}] [expr {$y+$h/2}] -text $label -fill $fg \
+                -font $::schem::gui::FONTSM -tags $tag
+            $Catbar bind $tag <Button-1> [my callback SetCat $key]
+            if {!$on} {
+                $Catbar bind $tag <Enter> [list $Catbar itemconfigure $id -fill $T(hover)]
+                $Catbar bind $tag <Leave> [list $Catbar itemconfigure $id -fill $T(raised)]
+            }
+            set x [expr {$x+$w+5}]
+        }
+        $Catbar configure -height [expr {$rows*($h+5)+4}]
+    }
+
+    method SetCat {key} { set BinCat $key ; my DrawCatbar ; my PopulateParts }
+    method OnCatbarConfigure {w} {
+        if {[info exists ::schem::gui::_catw] && $::schem::gui::_catw == $w} return
+        set ::schem::gui::_catw $w
+        my DrawCatbar
     }
 
     method BuildCanvas {parent} {
@@ -416,6 +472,10 @@ oo::class create ::schem::gui::App {
         bind $Canvas <ButtonRelease-1> [my callback OnRelease %x %y]
         bind $Canvas <Motion>          [my callback OnHover %x %y]
         bind $Canvas <Button-3>        [my callback OnRightClick %x %y]
+        # mouse-wheel zoom (Ctrl+wheel, or plain wheel) toward the cursor
+        bind $Canvas <Control-Button-4> [my callback WheelZoom 1 %x %y]
+        bind $Canvas <Control-Button-5> [my callback WheelZoom -1 %x %y]
+        bind $Canvas <Control-MouseWheel> [my callback WheelZoom %D %x %y]
     }
 
     method BuildInspector {parent} {
@@ -485,31 +545,67 @@ oo::class create ::schem::gui::App {
     # the canvas to place it -- or drag it straight onto the board.
     # PopulateParts -- draw the bin as a column of rows, each showing the part's
     # actual schematic symbol beside its name, so you recognise it on sight.
+    # PopulateParts -- draw the bin, honouring the search query and the active
+    # category chip so the list stays short.  A category shows only when it has
+    # matching parts.
     method PopulateParts {} {
         variable ::schem::gui::T
         if {![winfo exists $Parts]} return
         $Parts delete all
-        set w [winfo width $Parts] ; if {$w < 20} { set w 230 }
-        set ::schem::gui::_binY 0
-        set BinHit [dict create]
+        set w [winfo width $Parts] ; if {$w < 20} { set w 232 }
+        set ::schem::gui::_binY 4
+        set q [string tolower [string trim $BinQuery]]
+        set shown 0
 
-        my BinCategory "Basic elements"
-        foreach {type label} {
-            battery "Battery"  vsource "AC source"  ground "Ground"
-            resistor "Resistor"  capacitor "Capacitor"  inductor "Inductor"
-            diode "Diode"  bjt "Transistor"  mosfet "MOSFET"
-            switch "Switch"  button "Button"  relay "Relay"
-            lamp "Lamp"  fuse "Fuse"
-        } { my BinRow $type $label "" "" }
-
-        foreach cat [::schem::parts::categories] {
-            my BinCategory [my TitleCase $cat]
-            foreach id [::schem::parts::byCategory $cat] {
-                set spec [::schem::parts::get $id]
-                my BinRow [dict get $spec type] $id [dict get $spec desc] $id
+        # basic elements
+        if {$BinCat in {all basics}} {
+            set basics {
+                battery "Battery"  vsource "AC source"  ground "Ground"
+                resistor "Resistor"  capacitor "Capacitor"  inductor "Inductor"
+                diode "Diode"  bjt "Transistor"  mosfet "MOSFET"
+                switch "Switch"  button "Button"  relay "Relay"
+                lamp "Lamp"  fuse "Fuse"
+            }
+            set rows {}
+            foreach {type label} $basics {
+                if {$q eq "" || [string match *$q* [string tolower $label]] || [string match *$q* $type]} {
+                    lappend rows $type $label
+                }
+            }
+            if {[llength $rows]} {
+                my BinCategory "Basic elements"
+                foreach {type label} $rows { my BinRow $type $label "" "" ; incr shown }
             }
         }
-        $Parts configure -scrollregion [list 0 0 $w $::schem::gui::_binY]
+
+        # real parts by category
+        foreach cat [::schem::parts::categories] {
+            if {$BinCat ni [list all $cat]} continue
+            set rows {}
+            foreach id [::schem::parts::byCategory $cat] {
+                set spec [::schem::parts::get $id]
+                set hay [string tolower "$id [dict get $spec desc]"]
+                if {$q eq "" || [string match *$q* $hay]} {
+                    lappend rows [list $id $spec]
+                }
+            }
+            if {[llength $rows]} {
+                my BinCategory [my TitleCase $cat]
+                foreach r $rows {
+                    lassign $r id spec
+                    my BinRow [dict get $spec type] $id [dict get $spec desc] $id
+                    incr shown
+                }
+            }
+        }
+
+        if {$shown == 0} {
+            $Parts create text [expr {$w/2}] 40 -text "No parts match “$BinQuery”" \
+                -fill $T(faint) -font $::schem::gui::FONTSM -anchor n
+            set ::schem::gui::_binY 80
+        }
+        $Parts configure -scrollregion [list 0 0 $w [expr {$::schem::gui::_binY+8}]]
+        $Parts yview moveto 0
     }
 
     method TitleCase {s} {
@@ -538,49 +634,133 @@ oo::class create ::schem::gui::App {
     method BinRow {type label desc partid} {
         variable ::schem::gui::T
         set y $::schem::gui::_binY
-        set h 38
+        set h 42
         set tag "row[incr ::schem::gui::_binN]"
-        # hit/hover background (drawn, toggled on enter/leave)
-        set bgid [::schem::gui::roundrect $Parts 6 $y 240 [expr {$y+$h-4}] 6 \
+        set bgid [::schem::gui::roundrect $Parts 8 $y 242 [expr {$y+$h-4}] 7 \
             -fill $T(surface) -outline "" -tags [list $tag bg]]
-        # symbol preview, centred in a 40px gutter
-        set cx 30 ; set cy [expr {$y+($h-4)/2}]
+        set cy [expr {$y+($h-4)/2}]
+        # drag-grip dots on the far left -- the universal "grab me" affordance
+        set gx 17
+        foreach dy {-6 0 6} {
+            foreach dx {0 4} {
+                $Parts create oval [expr {$gx+$dx-1}] [expr {$cy+$dy-1}] \
+                    [expr {$gx+$dx+1}] [expr {$cy+$dy+1}] -fill $T(faint) -outline "" \
+                    -tags [list $tag grip_$tag]
+            }
+        }
+        # symbol preview
+        set cx 48
         ::schem::sym::draw $Parts $type $cx $cy -scale 0.42 -standard $Std \
             -color $T(symbol) -tags $tag
-        # label + optional id/desc
         if {$partid ne ""} {
-            $Parts create text 54 [expr {$cy-6}] -text $partid -anchor w \
+            $Parts create text 72 [expr {$cy-6}] -text $partid -anchor w \
                 -fill $T(ink) -font {"DejaVu Sans" 9 bold} -tags $tag
-            $Parts create text 54 [expr {$cy+8}] -text $desc -anchor w \
+            $Parts create text 72 [expr {$cy+8}] -text [my ShortDesc $desc] -anchor w \
                 -fill $T(dim) -font {"DejaVu Sans" 8} -tags $tag
         } else {
-            $Parts create text 54 $cy -text $label -anchor w \
+            $Parts create text 72 $cy -text $label -anchor w \
                 -fill $T(ink) -font {"DejaVu Sans" 10} -tags $tag
         }
-        # interaction
-        if {$partid ne ""} {
-            set pick [my callback PickPart $partid]
-        } else {
-            set pick [my callback PickPrimitive $type]
-        }
-        $Parts bind $tag <Button-1> $pick
+        # what this row places
+        if {$partid ne ""} { set place [list part $partid] } else { set place [list primitive $type] }
+        # click = arm placement; press-drag = drag-and-drop onto the canvas
+        $Parts bind $tag <Button-1>  [my callback BinPress $place %X %Y]
+        $Parts bind $tag <B1-Motion> [my callback BinMotion %X %Y]
+        $Parts bind $tag <ButtonRelease-1> [my callback BinDrop %X %Y]
         $Parts bind $tag <Enter> [list $Parts itemconfigure $bgid -fill $T(hover)]
         $Parts bind $tag <Leave> [list $Parts itemconfigure $bgid -fill $T(surface)]
         set ::schem::gui::_binY [expr {$y+$h}]
+    }
+
+    # ShortDesc -- trim a datasheet line to the headline (before the "--").
+    method ShortDesc {d} {
+        set i [string first " -- " $d]
+        if {$i > 0} { return [string range $d 0 [expr {$i-1}]] }
+        return $d
     }
 
     # PickPrimitive / PickPart -- arm placement of the chosen part; the next
     # canvas click drops it.
     method PickPrimitive {type} {
         set Pending [list primitive $type]
-        my SetStatus "Place '$type' -- click on the schematic." "primitive: $type"
+        my SetStatus "Click the board to place this ${type}." "+ $type"
     }
     method PickPart {id} {
         set Pending [list part $id]
-        my SetStatus "Place '$id' -- click on the schematic." "part: $id"
+        my SetStatus "Click the board to place ${id}." "+ $id"
     }
 
+    # ----- drag-and-drop from the parts bin --------------------------------
+    # Press on a bin row arms placement and records the start; dragging shows a
+    # floating ghost of the symbol that follows the cursor; releasing over the
+    # canvas drops the part there.  A click without a drag still arms placement
+    # (so click-then-click works too).
+    method BinPress {place X Y} {
+        lassign $place kind what
+        if {$kind eq "part"} { my PickPart $what } else { my PickPrimitive $what }
+        set type [expr {$kind eq "part" ? [dict get [::schem::parts::get $what] type] : $what}]
+        set Drag [dict create type $type started 0 X $X Y $Y]
+    }
+    method BinMotion {X Y} {
+        if {$Drag eq ""} return
+        # only treat as a drag once the pointer has moved a little
+        if {![dict get $Drag started]} {
+            if {abs($X-[dict get $Drag X]) + abs($Y-[dict get $Drag Y]) < 5} return
+            dict set Drag started 1
+        }
+        my DrawDragGhost $X $Y
+    }
+    method BinDrop {X Y} {
+        if {$Drag eq ""} return
+        set started [dict get $Drag started]
+        my KillDragGhost
+        if {$started} {
+            # dropped: if over the canvas, place there
+            set cw $Canvas
+            set cx [expr {$X - [winfo rootx $cw]}]
+            set cy [expr {$Y - [winfo rooty $cw]}]
+            if {$cx >= 0 && $cy >= 0 && $cx < [winfo width $cw] && $cy < [winfo height $cw]} {
+                my OnClick [$Canvas canvasx $cx] [$Canvas canvasy $cy]
+            }
+        }
+        set Drag ""
+    }
+    # a small floating toplevel that mirrors the dragged symbol under the cursor
+    method DrawDragGhost {X Y} {
+        variable ::schem::gui::T
+        set g .dragghost
+        if {![winfo exists $g]} {
+            toplevel $g -bg $T(accent)
+            wm overrideredirect $g 1
+            catch {wm attributes $g -alpha 0.85}
+            canvas $g.c -width 80 -height 56 -bg $T(raised) -highlightthickness 1 \
+                -highlightbackground $T(accent)
+            pack $g.c
+            ::schem::sym::draw $g.c [dict get $Drag type] 40 28 -scale 0.7 \
+                -standard $Std -color $T(ink)
+        }
+        wm geometry $g +[expr {$X+12}]+[expr {$Y+12}]
+        raise $g
+    }
+    method KillDragGhost {} { catch {destroy .dragghost} }
+
     method SetTool {t} { set Tool $t ; set PendWire "" ; my SetStatus "Tool: $t" ; my DrawToolbar ; my Redraw }
+
+    # ----- zoom ------------------------------------------------------------
+    method ZoomIn  {} { my SetZoom [expr {$Zoom*1.25}] }
+    method ZoomOut {} { my SetZoom [expr {$Zoom/1.25}] }
+    method ZoomReset {} { my SetZoom 1.0 }
+    method SetZoom {z} {
+        if {$z < 0.35} { set z 0.35 } ; if {$z > 3.0} { set z 3.0 }
+        set Zoom $z
+        my Redraw
+        my SetStatus "Zoom [expr {round($Zoom*100)}]%"
+    }
+    # Zoom toward the cursor on wheel scroll.
+    method WheelZoom {dir x y} {
+        set wx [expr {$x/$Zoom}] ; set wy [expr {$y/$Zoom}]
+        my SetZoom [expr {$dir > 0 ? $Zoom*1.15 : $Zoom/1.15}]
+    }
 
     # ----- the canvas: grid, symbols, wires, probes ------------------------
     method Redraw {} {
@@ -588,14 +768,58 @@ oo::class create ::schem::gui::App {
         if {![winfo exists $Canvas]} return
         $Canvas delete all
         my DrawGrid
-        if {[dict size $Placed] == 0} { my DrawWelcome ; return }
-        # wires first (under symbols)
-        foreach w $Wires { my DrawWire $w }
-        # pending wire rubber-band handled in OnHover
-        # components
-        dict for {name pl} $Placed { my DrawComponent $name }
-        # selection halo
-        if {$Sel ne "" && [dict exists $Placed $Sel]} { my DrawSelection $Sel }
+        if {[dict size $Placed] == 0} {
+            my DrawWelcome
+        } else {
+            foreach w $Wires { my DrawWire $w }
+            dict for {name pl} $Placed { my DrawComponent $name }
+            if {$Sel ne "" && [dict exists $Placed $Sel]} { my DrawSelection $Sel }
+        }
+        my DrawZoomControl   ;# always on top
+    }
+
+    # A floating control cluster in the bottom-right of the canvas: zoom out,
+    # the current percentage (click to reset to 100%), and zoom in.  Drawn as
+    # canvas items pinned to the viewport so it stays put while you pan/zoom.
+    method DrawZoomControl {} {
+        variable ::schem::gui::T
+        $Canvas delete zoomctl
+        set vx [winfo width $Canvas] ; set vy [winfo height $Canvas]
+        if {$vx < 50} { set vx 1000 } ; if {$vy < 50} { set vy 700 }
+        # convert viewport corner to canvas coords (so it ignores scroll)
+        set ox [$Canvas canvasx [expr {$vx-16}]] ; set oy [$Canvas canvasy [expr {$vy-16}]]
+        set bw 34 ; set bh 30 ; set gap 4
+        set pctw 56
+        set totalw [expr {$bw*2+$pctw+$gap*2}]
+        set x0 [expr {$ox-$totalw}] ; set y0 [expr {$oy-$bh}]
+        # container shadow/panel
+        ::schem::gui::roundrect $Canvas [expr {$x0-2}] [expr {$y0-2}] [expr {$ox+2}] [expr {$oy+2}] 9 \
+            -fill $T(surface) -outline $T(edge) -tags zoomctl
+        # minus button
+        my ZoomBtn zoom_out $x0 $y0 [expr {$x0+$bw}] [expr {$y0+$bh}] "−"
+        # percentage (click = reset)
+        set px0 [expr {$x0+$bw+$gap}]
+        ::schem::gui::roundrect $Canvas $px0 $y0 [expr {$px0+$pctw}] [expr {$y0+$bh}] 6 \
+            -fill $T(surface) -outline "" -tags {zoomctl zc_reset}
+        $Canvas create text [expr {$px0+$pctw/2}] [expr {$y0+$bh/2}] \
+            -text "[expr {round($Zoom*100)}]%" -fill $T(dim) -font $::schem::gui::FONTSM \
+            -tags {zoomctl zc_reset}
+        $Canvas bind zc_reset <Button-1> [my callback ZoomReset]
+        # plus button
+        set bx0 [expr {$px0+$pctw+$gap}]
+        my ZoomBtn zoom_in $bx0 $y0 [expr {$bx0+$bw}] [expr {$y0+$bh}] "+"
+    }
+    method ZoomBtn {which x1 y1 x2 y2 glyph} {
+        variable ::schem::gui::T
+        set tag "zc_$which"
+        set id [::schem::gui::roundrect $Canvas $x1 $y1 $x2 $y2 6 -fill $T(raised) -outline "" \
+            -tags [list zoomctl $tag]]
+        $Canvas create text [expr {($x1+$x2)/2}] [expr {($y1+$y2)/2}] -text $glyph \
+            -fill $T(ink) -font {"DejaVu Sans" 15} -tags [list zoomctl $tag]
+        set cmd [expr {$which eq "zoom_in" ? [my callback ZoomIn] : [my callback ZoomOut]}]
+        $Canvas bind $tag <Button-1> $cmd
+        $Canvas bind $tag <Enter> [list $Canvas itemconfigure $id -fill $T(hover)]
+        $Canvas bind $tag <Leave> [list $Canvas itemconfigure $id -fill $T(raised)]
     }
 
     # DrawWelcome -- the empty-board hint: a quiet pointer to the workflow, so a
@@ -628,15 +852,14 @@ oo::class create ::schem::gui::App {
     method DrawGrid {} {
         variable ::schem::gui::T
         lassign [my CanvasSize] W H
-        set g $Grid
-        for {set x 0} {$x <= $W} {incr x $g} {
-            for {set y 0} {$y <= $H} {incr y $g} {
-                set maj [expr {$x % ($g*5) == 0 && $y % ($g*5) == 0}]
-                if {$maj} {
-                    set c $T(gridcross) ; set r 1.4
-                } else {
-                    set c $T(griddot) ; set r 0.9
-                }
+        set g [expr {$Grid*$Zoom}]
+        if {$g < 6} { set g [expr {$g*2}] }   ;# avoid a too-dense dot field
+        set major 0
+        for {set x 0} {$x <= $W} {set x [expr {$x+$g}]} {
+            set cxmaj [expr {round($x/$g) % 5 == 0}]
+            for {set y 0} {$y <= $H} {set y [expr {$y+$g}]} {
+                set maj [expr {$cxmaj && (round($y/$g) % 5 == 0)}]
+                if {$maj} { set c $T(gridcross) ; set r 1.4 } else { set c $T(griddot) ; set r 0.9 }
                 $Canvas create oval [expr {$x-$r}] [expr {$y-$r}] [expr {$x+$r}] [expr {$y+$r}] \
                     -fill $c -outline "" -tags grid
             }
@@ -655,12 +878,12 @@ oo::class create ::schem::gui::App {
         variable ::schem::gui::T
         set pl [dict get $Placed $name]
         set type [dict get $pl type]
-        set x [dict get $pl x] ; set y [dict get $pl y]
+        set x [expr {[dict get $pl x]*$Zoom}] ; set y [expr {[dict get $pl y]*$Zoom}]
         set rot [dict get $pl rot]
         set partid [dict get $pl partid]
         set val [my ValueText $name]
         set color [my ComponentColor $name]
-        set sym [::schem::sym::draw $Canvas $type $x $y -scale 1.2 -standard $Std \
+        set sym [::schem::sym::draw $Canvas $type $x $y -scale [expr {1.2*$Zoom}] -standard $Std \
             -rot $rot -tags [list comp comp_$name] -color $color -label $name -value $val]
         # pin dots + record absolute positions
         set abspins [dict create]
@@ -749,15 +972,18 @@ oo::class create ::schem::gui::App {
 
     # ----- interaction -----------------------------------------------------
     method OnClick {x y} {
-        set x [my Snap $x] ; set y [my Snap $y]
-        if {$Pending ne ""} { my PlacePending $x $y ; return }
+        # placement / selection work in WORLD coords (snapped); wiring/probe use
+        # screen coords directly (pins are stored in screen space).
+        if {$Pending ne ""} { my PlacePending [my SnapW $x] [my SnapW $y] ; return }
         switch -- $Tool {
-            select { my SelectAt $x $y }
+            select { my SelectAt [my SnapW $x] [my SnapW $y] }
             wire   { my WireClick $x $y }
             probe  { my ProbeAt $x $y }
         }
     }
 
+    # SnapW -- screen pixel -> snapped WORLD coordinate.
+    method SnapW {v} { expr {round(double($v)/$Zoom/$Grid)*$Grid} }
     method Snap {v} { expr {round(double($v)/$Grid)*$Grid} }
 
     method PlacePending {x y} {
@@ -796,12 +1022,14 @@ oo::class create ::schem::gui::App {
         if {$hit ne ""} { my SetStatus "Selected $hit" } else { my SetStatus "Ready" }
     }
 
+    # ComponentAt -- nearest component to a WORLD-coordinate point.
     method ComponentAt {x y} {
         set best "" ; set bestd 1e9
+        set tol [expr {2500}]
         dict for {name pl} $Placed {
             set dx [expr {$x-[dict get $pl x]}] ; set dy [expr {$y-[dict get $pl y]}]
             set d [expr {$dx*$dx+$dy*$dy}]
-            if {$d < $bestd && $d < 2500} { set bestd $d ; set best $name }
+            if {$d < $bestd && $d < $tol} { set bestd $d ; set best $name }
         }
         return $best
     }
@@ -860,10 +1088,9 @@ oo::class create ::schem::gui::App {
     }
 
     method OnDrag {x y} {
-        # drag the selected component
+        # drag the selected component (world coords)
         if {$Tool ne "select" || $Sel eq "" || $Pending ne ""} return
-        set x [my Snap $x] ; set y [my Snap $y]
-        dict set Placed $Sel x $x ; dict set Placed $Sel y $y
+        dict set Placed $Sel x [my SnapW $x] ; dict set Placed $Sel y [my SnapW $y]
         set Dirty 1
         my Redraw
     }
@@ -880,7 +1107,7 @@ oo::class create ::schem::gui::App {
     }
 
     method OnRightClick {x y} {
-        set hit [my ComponentAt [my Snap $x] [my Snap $y]]
+        set hit [my ComponentAt [my SnapW $x] [my SnapW $y]]
         if {$hit ne ""} { set Sel $hit ; my Redraw ; my ShowInspector }
     }
 
@@ -890,39 +1117,48 @@ oo::class create ::schem::gui::App {
         if {![info exists Insp] || ![winfo exists $Insp]} return
         foreach c [winfo children $Insp] { destroy $c }
         if {$Sel eq "" || ![dict exists $Placed $Sel]} {
-            label $Insp.none -text "No selection.\n\nClick a part to inspect\nand edit its values." \
-                -bg $T(surface) -fg $T(dim) -justify left -anchor nw
-            pack $Insp.none -fill x -anchor nw -pady 8
+            label $Insp.none -text "Nothing selected" -bg $T(surface) -fg $T(dim) \
+                -justify left -anchor nw -font $::schem::gui::FONT
+            pack $Insp.none -fill x -anchor nw
+            label $Insp.hint2 -text "Click a part on the board to\nedit its values and ratings." \
+                -bg $T(surface) -fg $T(faint) -justify left -anchor nw -font $::schem::gui::FONTSM
+            pack $Insp.hint2 -fill x -anchor nw -pady {4 0}
             my ShowBoardSummary
             return
         }
         set pl [dict get $Placed $Sel]
         set type [dict get $pl type] ; set partid [dict get $pl partid]
-        label $Insp.name -text $Sel -bg $T(surface) -fg $T(ink) -font {TkDefaultFont 14 bold} -anchor w
+        # name + type, on one tidy header line
+        label $Insp.name -text $Sel -bg $T(surface) -fg $T(ink) \
+            -font {"DejaVu Sans" 15 bold} -anchor w
         pack $Insp.name -fill x -anchor w
-        label $Insp.type -text $type -bg $T(surface) -fg $T(accent) -anchor w
-        pack $Insp.type -fill x -anchor w
         if {$partid ne ""} {
             set spec [::schem::parts::get $partid]
-            label $Insp.pid -text "$partid -- [dict get $spec mfr]" -bg $T(surface) -fg $T(dim) \
-                -anchor w -wraplength 250 -justify left
-            pack $Insp.pid -fill x -anchor w
-            label $Insp.pdesc -text [dict get $spec desc] -bg $T(surface) -fg $T(dim) \
-                -anchor w -wraplength 250 -justify left
-            pack $Insp.pdesc -fill x -anchor w -pady {0 6}
+            label $Insp.type -text "$partid  ·  [dict get $spec mfr]" -bg $T(surface) \
+                -fg $T(accent) -anchor w -font $::schem::gui::FONTSM
+            pack $Insp.type -fill x -anchor w
+            label $Insp.pdesc -text [my ShortDesc [dict get $spec desc]] -bg $T(surface) \
+                -fg $T(dim) -anchor w -wraplength 250 -justify left -font $::schem::gui::FONTSM
+            pack $Insp.pdesc -fill x -anchor w -pady {2 0}
+        } else {
+            label $Insp.type -text $type -bg $T(surface) -fg $T(accent) -anchor w \
+                -font $::schem::gui::FONTSM
+            pack $Insp.type -fill x -anchor w
         }
         if {![catch {$S get $Sel} params] && [dict size $params]} {
-            label $Insp.ph -text "PARAMETERS" -bg $T(surface) -fg $T(dim) -font {TkDefaultFont 9 bold} -anchor w
-            pack $Insp.ph -fill x -anchor w -pady {8 2}
+            my InspSection $Insp.ph "Values"
             set i 0
             dict for {k v} $params {
                 set row [frame $Insp.p$i -bg $T(surface)]
-                pack $row -fill x -anchor w -pady 1
-                label $row.k -text $k -bg $T(surface) -fg $T(ink) -width 8 -anchor w
+                pack $row -fill x -anchor w -pady 2
+                label $row.k -text $k -bg $T(surface) -fg $T(dim) -width 7 -anchor w \
+                    -font $::schem::gui::FONTSM
                 pack $row.k -side left
-                set ev [entry $row.v -bg $T(raised) -fg $T(ink) -insertbackground $T(ink) -relief flat -width 14]
+                set ev [entry $row.v -bg $T(raised) -fg $T(ink) -insertbackground $T(accent) \
+                    -relief flat -font $::schem::gui::FONTMONO -highlightthickness 1 \
+                    -highlightbackground $T(edge) -highlightcolor $T(accent)]
                 $ev insert 0 $v
-                pack $ev -side left -fill x -expand 1
+                pack $ev -side left -fill x -expand 1 -ipady 2
                 bind $ev <Return>   [my callback SetParam $Sel $k $ev]
                 bind $ev <FocusOut> [my callback SetParam $Sel $k $ev]
                 incr i
@@ -931,38 +1167,59 @@ oo::class create ::schem::gui::App {
         if {[dict exists $pl ratings]} { my ShowRatings [dict get $pl ratings] }
     }
 
+    # InspSection -- a small section header with a hairline rule.
+    method InspSection {w title} {
+        variable ::schem::gui::T
+        set f [frame $w -bg $T(surface)]
+        pack $f -fill x -anchor w -pady {12 4}
+        label $f.l -text [string toupper $title] -bg $T(surface) -fg $T(faint) \
+            -font {"DejaVu Sans" 8 bold} -anchor w
+        pack $f.l -side top -fill x -anchor w
+        frame $f.r -bg $T(edge) -height 1
+        pack $f.r -side top -fill x -pady {3 0}
+    }
+
     method ShowRatings {findings} {
         variable ::schem::gui::T
-        label $Insp.rh -text "RATINGS" -bg $T(surface) -fg $T(dim) -font {TkDefaultFont 9 bold} -anchor w
-        pack $Insp.rh -fill x -anchor w -pady {10 2}
+        my InspSection $Insp.rh "Ratings"
         set i 0
         foreach r $findings {
-            set col [dict get {over #c05a5a marginal #c0894a ok #6a9a6a} [dict get $r verdict]]
-            set txt [format "%s  %.3g/%.3g %s  (%.0f%%)" [dict get $r limit] \
-                [dict get $r measured] [dict get $r rating] [dict get $r unit] \
-                [expr {[dict get $r margin]*100}]]
-            label $Insp.r$i -text $txt -bg $T(surface) -fg $col -anchor w -font {TkFixedFont 9}
-            pack $Insp.r$i -fill x -anchor w
+            set col [dict get [list over $T(bad) marginal $T(warn) ok $T(good)] [dict get $r verdict]]
+            set row [frame $Insp.r$i -bg $T(surface)]
+            pack $row -fill x -anchor w -pady 1
+            # a small status dot + the limit name + the measured/rated figure
+            canvas $row.d -width 10 -height 10 -bg $T(surface) -highlightthickness 0
+            $row.d create oval 2 2 8 8 -fill $col -outline ""
+            pack $row.d -side left -padx {0 6}
+            label $row.l -text [dict get $r limit] -bg $T(surface) -fg $T(ink) \
+                -width 5 -anchor w -font $::schem::gui::FONTSM
+            pack $row.l -side left
+            set pct [format %.0f [expr {[dict get $r margin]*100}]]
+            label $row.v -text "${pct}%" -bg $T(surface) -fg $col -width 5 -anchor w \
+                -font {"DejaVu Sans" 9 bold}
+            pack $row.v -side left
+            label $row.f -text [format "%.3g/%.3g%s" [dict get $r measured] \
+                [dict get $r rating] [dict get $r unit]] -bg $T(surface) -fg $T(faint) \
+                -anchor w -font $::schem::gui::FONTMONO
+            pack $row.f -side left
             incr i
         }
     }
 
     method ShowBoardSummary {} {
         variable ::schem::gui::T
-        label $Insp.sum -text "Board: [dict size $Placed] part(s), [llength $Wires] wire(s)" \
-            -bg $T(surface) -fg $T(dim) -anchor w -wraplength 250 -justify left
-        pack $Insp.sum -fill x -anchor w -pady {16 0}
-        if {$Result eq "solved"} {
-            label $Insp.solved -text "Solved.  Use Probe to read nodes." -bg $T(surface) \
-                -fg $T(accent) -anchor w -wraplength 250 -justify left
-            pack $Insp.solved -fill x -anchor w
-        }
-        # a couple of real-part placements get a one-line nudge toward the
-        # design review -- the workflow an EE expects next.
+        my InspSection $Insp.bs "Board"
+        label $Insp.sum -text "[dict size $Placed] parts · [llength $Wires] wires" \
+            -bg $T(surface) -fg $T(dim) -anchor w -font $::schem::gui::FONTSM
+        pack $Insp.sum -fill x -anchor w
         if {[dict size $Placed] > 0 && $Result ne "solved"} {
-            label $Insp.hint -text "Press F5 to solve, then Manufacture -> Design review to check parts against their ratings." \
-                -bg $T(surface) -fg $T(faint) -anchor w -wraplength 250 -justify left
-            pack $Insp.hint -fill x -anchor w -pady {8 0}
+            label $Insp.hint -text "Press F5 to solve." \
+                -bg $T(surface) -fg $T(faint) -anchor w -font $::schem::gui::FONTSM
+            pack $Insp.hint -fill x -anchor w -pady {4 0}
+        } elseif {$Result eq "solved"} {
+            label $Insp.solved -text "Solved — probe nodes, or run a Design review." -bg $T(surface) \
+                -fg $T(good) -anchor w -wraplength 250 -justify left -font $::schem::gui::FONTSM
+            pack $Insp.solved -fill x -anchor w
         }
     }
 
