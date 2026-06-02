@@ -18,7 +18,7 @@
 #   X name num x y len dir nsz lsz u c etype  pin
 # KiCad Y is up-positive; canvas Y is down-positive, so we negate Y on draw.
 
-package require Tcl 8.6
+package require Tcl 8.6-
 namespace eval ::schem::ksym {
     variable SYM        ;# schem-type -> {prims {..} pins {name {x y} ..} bbox {..}}
     array set SYM {}

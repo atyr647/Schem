@@ -22,7 +22,7 @@
 # Construction (which lanes to patch) is drafting-time arithmetic; the board it
 # leaves behind is pure Schem and round-trips through the binary .schem file.
 
-package require Tcl 8.6
+package require Tcl 8.6-
 namespace eval ::bombe {}
 
 # build -- the schematic for one candidate setting.  edges: menu; perms: dict

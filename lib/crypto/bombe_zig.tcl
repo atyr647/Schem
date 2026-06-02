@@ -15,7 +15,7 @@
 # Usage:  set zig [::bombe::emitZig $edges $wheels $rings $reflector $test]
 #         writes a *.zig you run with `zig run bombe.zig`.
 
-package require Tcl 8.6
+package require Tcl 8.6-
 namespace eval ::bombe {}
 
 proc ::bombe::EmitWirings {} {

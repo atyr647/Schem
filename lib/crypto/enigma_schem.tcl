@@ -17,7 +17,7 @@
 # position.  Building the *permutation* is drafting-time arithmetic (it decides
 # which lanes to patch); the *board* that results is pure Schem.
 
-package require Tcl 8.6
+package require Tcl 8.6-
 
 # scramblerCircuit -- a reusable Schem circuit for one scrambler at a fixed
 # position.  Exposes IN0..IN25 and OUT0..OUT25 (one port per lane) so it embeds
