@@ -35,14 +35,22 @@ Requires Tk (`wish`).  On Linux: `apt-get install tk`.
 2. **Wire** -- with the Wire tool, click a pin, then click another pin.  A
    rubber-band follows the cursor; pins snap.
 3. **Solve** (F5) -- computes the DC operating point.  Node voltages appear on
-   the board; use the **Probe** tool to read any pin.
-4. **Design review** (Manufacture menu) -- checks every *real* part's operating
-   point against its datasheet absolute-max ratings.  Over-limit parts turn
-   **red** on the schematic and **marginal** parts amber; the Inspector lists
-   each part's stress vs rating (e.g. `If 0.235/0.2 A (117%)`).
-5. **Export** -- `File -> Export image (SVG)` for a drawing, or
-   `Manufacture -> Export PCB` for a KiCad netlist + BOM the board house turns
-   into Gerbers.
+   the board; use the **Probe** tool to read any pin.  For time-varying
+   circuits (AC sources, RC/RL timing, rectifier ripple) use **Simulate ->
+   Transient analysis**, which runs a time-domain sweep and draws a live
+   oscilloscope plot of any node.
+4. **Check** -- **Simulate -> Design-rule check** runs the anti-spaghetti and
+   electrical checks; **Manufacture -> Design review** checks every *real*
+   part's operating point against its datasheet absolute-max ratings.
+   Over-limit parts turn **red** on the schematic and **marginal** parts amber;
+   the Inspector lists each part's stress vs rating (e.g. `If 117%`).
+5. **Export / compile** --
+   - `File -> Export image (SVG)` for a drawing,
+   - `Manufacture -> Export PCB` for a KiCad netlist + BOM the board house
+     turns into Gerbers,
+   - `File -> Compile to Zig` to turn the board into a standalone Zig program
+     that solves it (`zig run FILE.zig`),
+   - `File -> Show netlist` for the derived nodes + elements.
 
 ## Tools & keys
 
@@ -51,7 +59,8 @@ Requires Tk (`wish`).  On Linux: `apt-get install tk`.
 | Select | click/drag parts; edit values in the Inspector |
 | Wire   | click a pin, then another pin |
 | Probe  | after Solve, click a pin to read its voltage |
-| **F5** | Solve | **R** Rotate | **Del** Delete | **T** ANSI/IEC symbols |
+| **F5** Solve · **R** Rotate · **Del** Delete · **T** ANSI/IEC | |
+| **+ / −** zoom · **0** 100% · **F** fit · Ctrl+wheel zoom · middle-drag pan | |
 | Ctrl+N / O / S | New / Open / Save |
 
 ## Symbols

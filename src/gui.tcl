@@ -147,6 +147,12 @@ oo::class create ::schem::gui::App {
             placed         { return [dict keys $Placed] }
             wires          { return $Wires }
             result         { return $Result }
+            zoom           { return $Zoom }
+            compile        { my SyncPositions ; return [::schem::emit $S zig] }
+            validate-text  { my SyncPositions ; return [$S validateText] }
+            netlist-text   { my SyncPositions ; return [$S netlistText] }
+            run-transient  { return [$S run -duration [lindex $args 0] -dt [lindex $args 1] -record [lrange $args 2 end]] }
+            fit            { my CmdFitAll }
             verdict        { return [expr {[dict exists $Placed [lindex $args 0] verdict] ? [dict get $Placed [lindex $args 0] verdict] : "ok"}] }
             redraw         { my Redraw }
             default        { return -code error "unknown do action: $action" }
@@ -193,40 +199,58 @@ oo::class create ::schem::gui::App {
         my ApplyTheme
     }
 
+    method Submenu {parent name} {
+        variable ::schem::gui::T
+        return [menu $parent.$name -tearoff 0 -bg $T(raised) -fg $T(ink) \
+            -activebackground $T(accent2) -activeforeground white \
+            -bd 0 -relief flat -font $::schem::gui::FONT]
+    }
+
     method BuildMenu {} {
         variable ::schem::gui::T
         set m [menu $Win.menu -tearoff 0 -bg $T(surface) -fg $T(ink) \
-            -activebackground $T(sel) -activeforeground white]
+            -activebackground $T(accent2) -activeforeground white -bd 0]
         $Win configure -menu $m
-        set fm [menu $m.file -tearoff 0]
+        set fm [my Submenu $m file]
         $m add cascade -label File -menu $fm
         $fm add command -label "New"        -accelerator Ctrl+N -command [my callback Cmd new]
-        $fm add command -label "Open..."    -accelerator Ctrl+O -command [my callback Cmd open]
+        $fm add command -label "Open…"      -accelerator Ctrl+O -command [my callback Cmd open]
         $fm add command -label "Save"       -accelerator Ctrl+S -command [my callback Cmd save]
-        $fm add command -label "Save As..."                     -command [my callback Cmd saveas]
+        $fm add command -label "Save As…"                       -command [my callback Cmd saveas]
         $fm add separator
-        $fm add command -label "Export image (SVG)..."          -command [my callback Cmd export_svg]
-        $fm add command -label "Export PCB (KiCad + BOM)..."    -command [my callback Cmd export_pcb]
+        $fm add command -label "Export image (SVG)…"            -command [my callback Cmd export_svg]
+        $fm add command -label "Export PCB (KiCad + BOM)…"      -command [my callback Cmd export_pcb]
+        $fm add command -label "Compile to Zig…"                -command [my callback Cmd compile]
+        $fm add command -label "Show netlist…"                  -command [my callback Cmd netlist]
         $fm add separator
         $fm add command -label "Quit"       -accelerator Ctrl+Q -command [my callback Cmd quit]
-        set em [menu $m.edit -tearoff 0]
+        set em [my Submenu $m edit]
         $m add cascade -label Edit -menu $em
         $em add command -label "Delete selected" -accelerator Del -command [my callback Cmd delete]
         $em add command -label "Rotate selected" -accelerator R   -command [my callback Cmd rotate]
         $em add command -label "Clear board"                      -command [my callback Cmd clear]
-        set vm [menu $m.view -tearoff 0]
+        set vm [my Submenu $m view]
         $m add cascade -label View -menu $vm
-        $vm add command -label "Symbols: ANSI / IEC (toggle)" -accelerator T -command [my callback Cmd togglestd]
-        $vm add command -label "Fit to window"                                -command [my callback Cmd fit]
-        set sm [menu $m.sim -tearoff 0]
+        $vm add command -label "Zoom in"  -accelerator + -command [my callback Cmd zoomin]
+        $vm add command -label "Zoom out" -accelerator - -command [my callback Cmd zoomout]
+        $vm add command -label "Zoom 100%" -accelerator 0 -command [my callback Cmd zoomreset]
+        $vm add command -label "Fit board to window" -accelerator F -command [my callback Cmd fitall]
+        $vm add separator
+        $vm add command -label "Symbols: ANSI ⇄ IEC" -accelerator T -command [my callback Cmd togglestd]
+        set sm [my Submenu $m sim]
         $m add cascade -label Simulate -menu $sm
         $sm add command -label "Solve (DC operating point)" -accelerator F5 -command [my callback Cmd solve]
-        $sm add command -label "Clear results"                              -command [my callback Cmd clearresults]
-        set mm [menu $m.man -tearoff 0]
+        $sm add command -label "Transient analysis…"        -command [my callback Cmd transient]
+        $sm add separator
+        $sm add command -label "Design-rule check…"         -command [my callback Cmd validate]
+        $sm add command -label "Clear results"              -command [my callback Cmd clearresults]
+        set mm [my Submenu $m man]
         $m add cascade -label Manufacture -menu $mm
         $mm add command -label "Design review (check ratings)" -command [my callback Cmd review]
-        $mm add command -label "Export PCB (KiCad + BOM)..."   -command [my callback Cmd export_pcb]
-        set hm [menu $m.help -tearoff 0]
+        $mm add separator
+        $mm add command -label "Export PCB (KiCad + BOM)…"   -command [my callback Cmd export_pcb]
+        $mm add command -label "Compile to Zig…"             -command [my callback Cmd compile]
+        set hm [my Submenu $m help]
         $m add cascade -label Help -menu $hm
         $hm add command -label "Keys & tools" -command [my callback Cmd help]
         $hm add command -label "About Schem"  -command [my callback Cmd about]
@@ -240,6 +264,7 @@ oo::class create ::schem::gui::App {
         bind $Win <Key-Delete> [my callback Cmd delete]
         bind $Win <Key-r>     [my callback Cmd rotate]
         bind $Win <Key-t>     [my callback Cmd togglestd]
+        bind $Win <Key-f>     [my callback Cmd fitall]
         bind $Win <Key-plus>  [my callback ZoomIn]
         bind $Win <Key-equal> [my callback ZoomIn]
         bind $Win <Key-minus> [my callback ZoomOut]
@@ -481,10 +506,18 @@ oo::class create ::schem::gui::App {
         bind $Canvas <ButtonRelease-1> [my callback OnRelease %x %y]
         bind $Canvas <Motion>          [my callback OnHover %x %y]
         bind $Canvas <Button-3>        [my callback OnRightClick %x %y]
-        # mouse-wheel zoom (Ctrl+wheel, or plain wheel) toward the cursor
+        # mouse-wheel zoom (Ctrl+wheel) toward the cursor
         bind $Canvas <Control-Button-4> [my callback WheelZoom 1 %x %y]
         bind $Canvas <Control-Button-5> [my callback WheelZoom -1 %x %y]
         bind $Canvas <Control-MouseWheel> [my callback WheelZoom %D %x %y]
+        # plain wheel scrolls vertically; Shift+wheel horizontally
+        bind $Canvas <Button-4> [list $Canvas yview scroll -1 units]
+        bind $Canvas <Button-5> [list $Canvas yview scroll 1 units]
+        bind $Canvas <Shift-Button-4> [list $Canvas xview scroll -1 units]
+        bind $Canvas <Shift-Button-5> [list $Canvas xview scroll 1 units]
+        # pan with the middle button (or space-drag) -- grab the empty canvas
+        bind $Canvas <ButtonPress-2>   [list $Canvas scan mark %x %y]
+        bind $Canvas <B2-Motion>       [list $Canvas scan dragto %x %y 1]
     }
 
     method BuildInspector {parent} {
@@ -760,6 +793,21 @@ oo::class create ::schem::gui::App {
     method ZoomIn  {} { my SetZoom [expr {$Zoom*1.25}] }
     method ZoomOut {} { my SetZoom [expr {$Zoom/1.25}] }
     method ZoomReset {} { my SetZoom 1.0 }
+    # FitToContent -- choose a zoom so the whole board fits the viewport.
+    method FitToContent {} {
+        if {[dict size $Placed] == 0} { my SetZoom 1.0 ; return }
+        set minx 1e9 ; set miny 1e9 ; set maxx -1e9 ; set maxy -1e9
+        dict for {n pl} $Placed {
+            set x [dict get $pl x] ; set y [dict get $pl y]
+            if {$x < $minx} { set minx $x } ; if {$x > $maxx} { set maxx $x }
+            if {$y < $miny} { set miny $y } ; if {$y > $maxy} { set maxy $y }
+        }
+        set bw [expr {($maxx-$minx)+200}] ; set bh [expr {($maxy-$miny)+200}]
+        set vw [winfo width $Canvas] ; set vh [winfo height $Canvas]
+        if {$vw < 50} { set vw 900 } ; if {$vh < 50} { set vh 600 }
+        set z [expr {min(double($vw)/$bw, double($vh)/$bh)}]
+        my SetZoom $z
+    }
     method SetZoom {z} {
         if {$z < 0.35} { set z 0.35 } ; if {$z > 3.0} { set z 3.0 }
         set Zoom $z
@@ -1258,8 +1306,16 @@ oo::class create ::schem::gui::App {
             togglestd  { set Std [expr {$Std eq "ansi" ? "iec" : "ansi"}] ; my DrawToolbar ; my PopulateParts ; my Redraw ; my SetStatus "symbols: $Std" }
             fit        { my Redraw }
             solve      { my CmdSolve }
+            transient  { my CmdTransient }
             clearresults { set Result none ; my Redraw ; my SetStatus "results cleared" }
             review     { my CmdReview }
+            validate   { my CmdValidate }
+            netlist    { my CmdNetlist }
+            compile    { my CmdCompile }
+            fitall     { my CmdFitAll }
+            zoomin     { my ZoomIn }
+            zoomout    { my ZoomOut }
+            zoomreset  { my ZoomReset }
             help       { my CmdHelp }
             about      { my CmdAbout }
         }
@@ -1316,6 +1372,216 @@ oo::class create ::schem::gui::App {
             my SetStatus "Solved with [llength $f] fault(s): [dict get [lindex $f 0] detail]"
         } else {
             my SetStatus "Solved.  Probe nodes, or run a Design review." "OK"
+        }
+    }
+
+    # TextDialog -- a reusable scrollable, monospace, read-only text window for
+    # the netlist, the validation report, the compiled output, etc.  Optionally
+    # offers a "Save..." button writing the body to a file.
+    method TextDialog {title body {savext ""}} {
+        variable ::schem::gui::T
+        set w .td[incr ::schem::gui::_wincount]
+        toplevel $w -bg $T(surface)
+        wm title $w $title
+        catch {wm geometry $w 720x520}
+        label $w.h -text $title -bg $T(surface) -fg $T(ink) -anchor w \
+            -font $::schem::gui::FONTTITLE -padx 14
+        pack $w.h -side top -fill x -pady {12 6}
+        set tf [frame $w.tf -bg $T(surface)]
+        pack $tf -side top -fill both -expand 1 -padx 12
+        set txt [text $tf.t -bg $T(sunken) -fg $T(ink) -bd 0 -highlightthickness 0 \
+            -wrap none -padx 10 -pady 8 -font $::schem::gui::FONTMONO \
+            -yscrollcommand [list $tf.sb set] -xscrollcommand [list $tf.hb set] \
+            -insertbackground $T(accent)]
+        scrollbar $tf.sb -orient vertical -command [list $txt yview] \
+            -bg $T(edgehi) -activebackground $T(accent) -troughcolor $T(sunken) \
+            -bd 0 -highlightthickness 0 -width 13
+        scrollbar $tf.hb -orient horizontal -command [list $txt xview] \
+            -bg $T(edgehi) -activebackground $T(accent) -troughcolor $T(sunken) \
+            -bd 0 -highlightthickness 0 -width 13
+        grid $txt    -row 0 -column 0 -sticky nsew
+        grid $tf.sb  -row 0 -column 1 -sticky ns
+        grid $tf.hb  -row 1 -column 0 -sticky ew
+        grid rowconfigure $tf 0 -weight 1
+        grid columnconfigure $tf 0 -weight 1
+        $txt insert end $body
+        $txt configure -state disabled
+        # button row
+        set bb [frame $w.bb -bg $T(surface)]
+        pack $bb -side bottom -fill x -padx 12 -pady 10
+        button $bb.close -text "Close" -command [list destroy $w] \
+            -bg $T(raised) -fg $T(ink) -activebackground $T(hover) -relief flat -padx 14 -pady 5
+        pack $bb.close -side right
+        if {$savext ne ""} {
+            button $bb.save -text "Save…" -relief flat -padx 14 -pady 5 \
+                -bg $T(accent2) -fg white -activebackground $T(accent) \
+                -command [my callback DialogSave $body $savext]
+            pack $bb.save -side right -padx {0 8}
+        }
+        return $w
+    }
+    method DialogSave {body ext} {
+        set f [tk_getSaveFile -defaultextension $ext]
+        if {$f eq ""} return
+        set fh [open $f w] ; puts $fh $body ; close $fh
+        my SetStatus "Saved $f"
+    }
+
+    # CmdValidate -- run the anti-spaghetti + electrical design-rule checks and
+    # show the report (the DRC an engineer runs before committing a board).
+    method CmdValidate {} {
+        if {[dict size $Placed] == 0} { my SetStatus "Nothing to validate." ; return }
+        my SyncPositions
+        set rep [$S validateText]
+        set findings [$S validate]
+        my TextDialog "Design-rule check" $rep
+        if {[llength $findings]} {
+            my SetStatus "[llength $findings] design-rule finding(s)." "WARN"
+        } else {
+            my SetStatus "Design-rule check passed." "OK"
+        }
+    }
+
+    # CmdNetlist -- show the derived netlist (nodes + elements), the connectivity
+    # the simulator and exporters consume.
+    method CmdNetlist {} {
+        if {[dict size $Placed] == 0} { my SetStatus "Nothing to net." ; return }
+        my SyncPositions
+        my TextDialog "Netlist (derived)" [$S netlistText] .txt
+        my SetStatus "Netlist shown."
+    }
+
+    # CmdCompile -- compile the board down to a standalone Zig program that
+    # solves it, the same backend the CLI's `emit zig` uses.  This is the
+    # "compile down" path: the schematic becomes native code you can build and
+    # run with `zig run`.
+    method CmdCompile {} {
+        if {[dict size $Placed] == 0} { my SetStatus "Nothing to compile." ; return }
+        my SyncPositions
+        if {[catch {::schem::emit $S zig} src]} { my SetStatus "compile error: $src" ; return }
+        set n [llength [split $src \n]]
+        my TextDialog "Compiled to Zig  ·  $n lines  ·  build with: zig run FILE.zig" $src .zig
+        my SetStatus "Compiled to Zig ($n lines).  Save and `zig run` it." "OK"
+    }
+
+    # CmdTransient -- time-domain analysis (for AC sources, RC/RL timing,
+    # rectifier ripple, oscillators).  Asks for a duration + step, runs, and
+    # plots the recorded node waveforms.
+    method CmdTransient {} {
+        if {[dict size $Placed] == 0} { my SetStatus "Nothing to run." ; return }
+        my SyncPositions
+        my TransientDialog
+    }
+
+    method CmdFitAll {} { my FitToContent ; my Redraw }
+
+    # ----- transient analysis dialog ---------------------------------------
+    # A time-domain run with a small controls strip (duration, step, which node
+    # to plot) and a live oscilloscope-style plot.  This is what brings the AC
+    # sources, RC/RL timing and rectifier ripple to life in the GUI.
+    method TransientDialog {} {
+        variable ::schem::gui::T
+        set w .tr[incr ::schem::gui::_wincount]
+        toplevel $w -bg $T(surface)
+        wm title $w "Transient analysis"
+        catch {wm geometry $w 760x520}
+        # controls
+        set ctl [frame $w.ctl -bg $T(surface)]
+        pack $ctl -side top -fill x -padx 12 -pady 10
+        label $ctl.dl -text "Duration (s)" -bg $T(surface) -fg $T(dim) -font $::schem::gui::FONTSM
+        pack $ctl.dl -side left
+        entry $ctl.de -bg $T(raised) -fg $T(ink) -width 8 -relief flat \
+            -insertbackground $T(accent) -font $::schem::gui::FONTMONO
+        $ctl.de insert 0 "0.05" ; pack $ctl.de -side left -padx {4 12}
+        label $ctl.sl -text "Step (s)" -bg $T(surface) -fg $T(dim) -font $::schem::gui::FONTSM
+        pack $ctl.sl -side left
+        entry $ctl.se -bg $T(raised) -fg $T(ink) -width 8 -relief flat \
+            -insertbackground $T(accent) -font $::schem::gui::FONTMONO
+        $ctl.se insert 0 "5e-5" ; pack $ctl.se -side left -padx {4 12}
+        label $ctl.nl -text "Plot node" -bg $T(surface) -fg $T(dim) -font $::schem::gui::FONTSM
+        pack $ctl.nl -side left
+        # node menu = every component terminal
+        set terms {}
+        foreach n [$S components] {
+            if {[$S typeof $n] in {ground bus junction}} continue
+            foreach t [$S terminals $n] { lappend terms $n.$t }
+        }
+        set nodevar ::schem::gui::_trnode$::schem::gui::_wincount
+        set $nodevar [lindex $terms 0]
+        set mb [menubutton $ctl.nb -textvariable $nodevar -bg $T(raised) -fg $T(ink) \
+            -relief flat -padx 8 -pady 2 -font $::schem::gui::FONTMONO -direction below -indicatoron 0]
+        pack $mb -side left -padx 4
+        set nm [menu $mb.m -tearoff 0 -bg $T(raised) -fg $T(ink) -activebackground $T(accent2)]
+        $mb configure -menu $nm
+        foreach t $terms { $nm add command -label $t -command [list set $nodevar $t] }
+        # plot canvas
+        set plot [canvas $w.plot -bg $T(sunken) -highlightthickness 0]
+        pack $plot -side top -fill both -expand 1 -padx 12 -pady {0 8}
+        # buttons
+        set bb [frame $w.bb -bg $T(surface)]
+        pack $bb -side bottom -fill x -padx 12 -pady 10
+        button $bb.run -text "Run ▶" -relief flat -padx 16 -pady 5 \
+            -bg $T(accent2) -fg white -activebackground $T(accent) \
+            -command [my callback RunTransient $ctl.de $ctl.se $nodevar $plot]
+        pack $bb.run -side left
+        button $bb.close -text "Close" -command [list destroy $w] \
+            -bg $T(raised) -fg $T(ink) -activebackground $T(hover) -relief flat -padx 14 -pady 5
+        pack $bb.close -side right
+        after 60 [my callback RunTransient $ctl.de $ctl.se $nodevar $plot]
+    }
+
+    method RunTransient {de se nodevar plot} {
+        variable ::schem::gui::T
+        if {![winfo exists $plot]} return
+        set dur [$de get] ; set dt [$se get] ; set node [set $nodevar]
+        if {![string is double -strict $dur] || ![string is double -strict $dt]} {
+            my SetStatus "transient: bad duration/step" ; return
+        }
+        if {[catch {$S run -duration $dur -dt $dt -record [list $node]} res]} {
+            my SetStatus "transient error: $res" ; return
+        }
+        my PlotWave $plot [dict get $res t] [dict get $res $node] $node
+        my SetStatus "Transient run: $node over ${dur}s" "OK"
+    }
+
+    # PlotWave -- a simple oscilloscope trace of v(t) with autoscaled axes.
+    method PlotWave {c ts vs label} {
+        variable ::schem::gui::T
+        $c delete all
+        update idletasks
+        set W [winfo width $c] ; set H [winfo height $c]
+        if {$W < 50} { set W 700 } ; if {$H < 50} { set H 360 }
+        set ml 54 ; set mr 16 ; set mt 16 ; set mb 28
+        set t0 [lindex $ts 0] ; set t1 [lindex $ts end]
+        if {$t1 <= $t0} { set t1 [expr {$t0+1}] }
+        set vmin [lindex [lsort -real $vs] 0] ; set vmax [lindex [lsort -real $vs] end]
+        if {$vmax-$vmin < 1e-9} { set vmin [expr {$vmin-1}] ; set vmax [expr {$vmax+1}] }
+        set pad [expr {($vmax-$vmin)*0.1}] ; set vmin [expr {$vmin-$pad}] ; set vmax [expr {$vmax+$pad}]
+        set sx [list apply {{t ml W mr t0 t1} {expr {$ml+($t-$t0)/($t1-$t0)*($W-$ml-$mr)}}} {} $ml $W $mr $t0 $t1]
+        # helper closures via expr inline
+        set xpix {{t} { upvar 1 ml ml W W mr mr t0 t0 t1 t1 ; expr {$ml+($t-$t0)/($t1-$t0)*($W-$ml-$mr)} }}
+        set ypix {{v} { upvar 1 mt mt H H mb mb vmin vmin vmax vmax ; expr {$mt+($vmax-$v)/($vmax-$vmin)*($H-$mt-$mb)} }}
+        # grid + axis labels
+        for {set i 0} {$i <= 4} {incr i} {
+            set v [expr {$vmin+($vmax-$vmin)*$i/4.0}]
+            set y [apply $ypix $v]
+            $c create line $ml $y [expr {$W-$mr}] $y -fill $T(edge)
+            $c create text [expr {$ml-6}] $y -text [format %.2g $v] -anchor e \
+                -fill $T(dim) -font $::schem::gui::FONTSM
+        }
+        $c create text [expr {($ml+$W-$mr)/2}] [expr {$H-8}] -text "time (s)  ·  0 → [format %.3g $t1]" \
+            -fill $T(faint) -font $::schem::gui::FONTSM
+        $c create text [expr {$ml+4}] [expr {$mt+2}] -text $label -anchor nw \
+            -fill $T(accent) -font $::schem::gui::FONTH
+        # zero line
+        if {$vmin < 0 && $vmax > 0} {
+            set yz [apply $ypix 0] ; $c create line $ml $yz [expr {$W-$mr}] $yz -fill $T(edgehi)
+        }
+        # trace
+        set pts {}
+        foreach t $ts v $vs { lappend pts [apply $xpix $t] [apply $ypix $v] }
+        if {[llength $pts] >= 4} {
+            $c create line {*}$pts -fill $T(good) -width 2 -smooth 1
         }
     }
 
@@ -1431,8 +1697,38 @@ oo::class create ::schem::gui::App {
     }
 
     method CmdHelp {} {
-        tk_messageBox -type ok -title "Schem -- keys & tools" -message \
-"TOOLS\n  Select  - click/drag parts, edit values in the Inspector\n  Wire    - click a pin, then click another pin\n  Probe   - after Solve, click a pin to read its voltage\n\nKEYS\n  F5  Solve      R  Rotate      Del  Delete      T  Toggle ANSI/IEC\n  Ctrl+N/O/S  New / Open / Save\n\nWORKFLOW\n  1. Click a part in the bin, click the canvas to place it\n  2. Wire the pins (Wire tool)\n  3. Solve (F5), Probe nodes\n  4. Design review checks real parts against datasheet ratings\n  5. Export PCB -> KiCad netlist + BOM for the board house"
+        my TextDialog "Keys & tools" \
+"TOOLS
+  Select   click parts to select; drag to move; edit values in the Inspector
+  Wire     click a pin, then click another pin
+  Probe    after Solve, click a pin to read its node voltage
+
+NAVIGATION
+  +  -      zoom in / out          0   zoom to 100%        F   fit board to window
+  Ctrl+wheel  zoom toward cursor   middle-drag  pan        wheel  scroll
+
+KEYS
+  F5  Solve      R  Rotate      Del  Delete      T  ANSI / IEC symbols
+  Ctrl+N / O / S   New / Open / Save
+
+ANALYSIS
+  Solve            DC operating point (voltages, currents)
+  Transient…       time-domain run with a live oscilloscope plot (AC, RC/RL)
+  Design-rule check   anti-spaghetti + electrical checks
+  Design review    every real part vs its datasheet ratings (over = red)
+
+OUTPUT
+  Export image (SVG)        a drawing of the schematic
+  Export PCB (KiCad + BOM)  the files a board house manufactures from
+  Compile to Zig            the board as a standalone Zig program (zig run)
+  Show netlist              the derived nodes + elements
+
+WORKFLOW
+  1. Click or drag a part from the bin onto the board
+  2. Wire the pins (Wire tool)
+  3. Solve (F5); Probe nodes; or run a Transient
+  4. Design review checks real parts against datasheet ratings
+  5. Export PCB, or Compile to Zig"
     }
     method CmdAbout {} {
         tk_messageBox -type ok -title "About Schem" -message \

@@ -136,6 +136,51 @@ ok "non-matching params -> none"   {[apply {{} {
     expr {[::schem::parts::identify $s D] eq ""}
 }}]}
 
+# ====================================================================
+section "compile / validate / netlist / transient / zoom"
+# ====================================================================
+set app5 [::schem::gui::App new [::schem::new feat]]
+set s5 [$app5 schematic]
+$app5 do pick-primitive battery ;  $app5 do click 200 200
+$app5 do pick-primitive resistor ; $app5 do click 400 200
+$app5 do pick-primitive ground ;   $app5 do click 200 360
+$app5 do wire BT1.pos R1.a ; $app5 do wire R1.b GND1.t ; $app5 do wire BT1.neg GND1.t
+
+# compile down to Zig
+set zig [$app5 do compile]
+ok "compile emits Zig"             {[string match "*@import(\"std\")*" $zig]}
+ok "compiled Zig has a main"       {[regexp {fn\s+main} $zig]}
+ok "compiled Zig is substantial"   {[llength [split $zig \n]] > 40}
+
+# validate (design-rule check)
+ok "validate produces a report"    {[string length [$app5 do validate-text]] > 0}
+
+# netlist
+ok "netlist names nodes"           {[string match "*nodes*" [$app5 do netlist-text]]}
+
+# transient run on an AC source
+set app6 [::schem::gui::App new [::schem::new tr]]
+set s6 [$app6 schematic]
+$app6 do pick-primitive vsource ;  $app6 do click 200 200
+$app6 do pick-primitive resistor ; $app6 do click 400 200
+$app6 do pick-primitive ground ;   $app6 do click 200 360
+$s6 set J1 vac 10 ; $s6 set J1 freq 100
+$app6 do wire J1.pos R1.a ; $app6 do wire R1.b GND1.t ; $app6 do wire J1.neg GND1.t
+set res [$app6 do run-transient 0.02 1e-4 R1.a]
+ok "transient returns a time axis"  {[llength [dict get $res t]] > 10}
+ok "transient records the node"     {[dict exists $res R1.a]}
+set vs [dict get $res R1.a]
+ok "AC trace swings positive+neg"   {[lindex [lsort -real $vs] end] > 1 && [lindex [lsort -real $vs] 0] < -1}
+
+# zoom
+ok "zoom starts at 1.0"            {abs([$app5 do zoom]-1.0) < 1e-9}
+$app5 do command zoomin
+ok "zoom-in raises the factor"     {[$app5 do zoom] > 1.0}
+$app5 do command zoomreset
+ok "zoom-reset returns to 1.0"     {abs([$app5 do zoom]-1.0) < 1e-9}
+$app5 do command fitall
+ok "fit picks a sane zoom"         {[$app5 do zoom] > 0.3 && [$app5 do zoom] <= 3.0}
+
 # --------------------------------------------------------------------
 puts "\n$::T passed, $::F failed"
 exit [expr {$::F > 0}]
