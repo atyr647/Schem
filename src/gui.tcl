@@ -89,7 +89,7 @@ oo::class create ::schem::gui::App {
     variable TbarW      ;# last toolbar width (resize debounce)
     variable TbarBusy   ;# reentrancy guard for DrawToolbar
     variable Parts      ;# parts-bin canvas
-    variable Catbar     ;# parts-bin category-chip canvas
+    variable CatBtn     ;# parts-bin category filter menubutton
     variable Insp       ;# inspector frame
     variable Status     ;# status bar text var (array-backed)
     variable File       ;# current .schem path ("" if unsaved)
@@ -375,77 +375,86 @@ oo::class create ::schem::gui::App {
         set f [frame $parent.bin -bg $T(surface) -width 250]
         pack $f -side left -fill y
         pack propagate $f 0
-        # title
-        label $f.h -text "Parts" -bg $T(surface) -fg $T(ink) -anchor w \
-            -font $::schem::gui::FONTTITLE -padx 14
-        pack $f.h -side top -fill x -pady {12 6}
-        # search field (rounded, with a magnifier glyph)
-        set sf [frame $f.sf -bg $T(surface)]
-        pack $sf -side top -fill x -padx 12 -pady {0 8}
-        set sbox [frame $sf.box -bg $T(raised) -highlightthickness 1 \
+        # One compact control row: a search field that fills, plus a category
+        # filter button on the right.  No separate title -- the search field's
+        # placeholder says what it is.
+        set top [frame $f.top -bg $T(surface)]
+        pack $top -side top -fill x -padx 8 -pady 8
+        set sbox [frame $top.box -bg $T(raised) -highlightthickness 1 \
             -highlightbackground $T(edge) -highlightcolor $T(accent)]
-        pack $sbox -fill x
+        pack $sbox -side left -fill x -expand 1
         label $sbox.ic -text "⌕" -bg $T(raised) -fg $T(dim) -font {"DejaVu Sans" 11}
-        pack $sbox.ic -side left -padx {8 2}
-        set ent [entry $sbox.e -bg $T(raised) -fg $T(ink) -insertbackground $T(ink) \
-            -relief flat -font $::schem::gui::FONT -textvariable [my varname BinQuery]]
-        pack $ent -side left -fill x -expand 1 -pady 4 -padx {0 6}
+        pack $sbox.ic -side left -padx {6 0}
+        set ent [entry $sbox.e -bg $T(raised) -fg $T(ink) -insertbackground $T(accent) \
+            -relief flat -font $::schem::gui::FONTSM -textvariable [my varname BinQuery]]
+        pack $ent -side left -fill x -expand 1 -pady 3 -padx {2 4}
         bind $ent <KeyRelease> [my callback PopulateParts]
-        # category filter chips (a horizontally scrolling row)
-        set Catbar [canvas $f.cat -bg $T(surface) -height 30 -highlightthickness 0 -bd 0]
-        pack $Catbar -side top -fill x -padx 8
-        bind $Catbar <Configure> [my callback OnCatbarConfigure %w]
-        # scrollable canvas of symbol rows
+        my Placeholder $ent "Search parts"
+        # category filter -- a compact menubutton showing the active filter
+        set CatBtn [menubutton $top.cat -bg $T(raised) -fg $T(ink) \
+            -activebackground $T(hover) -activeforeground $T(ink) -relief flat \
+            -font $::schem::gui::FONTSM -padx 8 -pady 3 -direction below \
+            -indicatoron 0 -text "All ▾"]
+        pack $CatBtn -side left -padx {6 0} -fill y
+        set cm [menu $CatBtn.m -tearoff 0 -bg $T(raised) -fg $T(ink) \
+            -activebackground $T(accent2) -activeforeground white -bd 0]
+        $CatBtn configure -menu $cm
+        my BuildCatMenu $cm
+        # scrollable list of symbol rows, with a proper visible scrollbar
         set tree [frame $f.tree -bg $T(surface)]
         pack $tree -side top -fill both -expand 1
         set Parts [canvas $tree.c -bg $T(surface) -highlightthickness 0 -bd 0]
-        scrollbar $tree.sb -command [list $Parts yview] -bd 0 -highlightthickness 0 \
-            -bg $T(surface) -troughcolor $T(surface) -activebackground $T(edgehi) \
-            -elementborderwidth 0 -width 10
+        # a clearly visible scrollbar: a lighter thumb on a darker trough
+        scrollbar $tree.sb -orient vertical -command [list $Parts yview] \
+            -bg $T(edgehi) -activebackground $T(accent) -troughcolor $T(sunken) \
+            -bd 0 -highlightthickness 0 -width 13 -relief flat -elementborderwidth 1
         $Parts configure -yscrollcommand [list $tree.sb set]
         pack $tree.sb -side right -fill y
         pack $Parts -side left -fill both -expand 1
         bind $Parts <Button-4> [list $Parts yview scroll -2 units]
         bind $Parts <Button-5> [list $Parts yview scroll 2 units]
         bind $Parts <MouseWheel> [list $Parts yview scroll {%D -120 /} units]
-        my DrawCatbar
         my PopulateParts
     }
 
-    # category chips: All + one per group, so a click jumps straight to a
-    # section instead of scrolling.
-    method DrawCatbar {} {
-        variable ::schem::gui::T
-        if {![winfo exists $Catbar]} return
-        $Catbar delete all
-        set avail [winfo width $Catbar] ; if {$avail < 50} { set avail 226 }
-        set x 4 ; set y 4 ; set h 20 ; set rows 1
-        foreach {key label} [linsert [concat {*}[lmap c [::schem::parts::categories] {list $c [my TitleCase $c]}]] 0 all All basics Basics] {
-            set on [expr {$BinCat eq $key}]
-            set w [expr {[font measure $::schem::gui::FONTSM $label]+18}]
-            if {$x+$w > $avail-4 && $x > 4} { set x 4 ; incr y [expr {$h+5}] ; incr rows }
-            set fill [expr {$on ? $T(accent2) : $T(raised)}]
-            set fg   [expr {$on ? "white" : $T(dim)}]
-            set tag "cat_$key"
-            set id [::schem::gui::roundrect $Catbar $x $y [expr {$x+$w}] [expr {$y+$h}] 9 \
-                -fill $fill -outline "" -tags $tag]
-            $Catbar create text [expr {$x+$w/2}] [expr {$y+$h/2}] -text $label -fill $fg \
-                -font $::schem::gui::FONTSM -tags $tag
-            $Catbar bind $tag <Button-1> [my callback SetCat $key]
-            if {!$on} {
-                $Catbar bind $tag <Enter> [list $Catbar itemconfigure $id -fill $T(hover)]
-                $Catbar bind $tag <Leave> [list $Catbar itemconfigure $id -fill $T(raised)]
-            }
-            set x [expr {$x+$w+5}]
+    # BuildCatMenu -- fill the category dropdown: All, Basics, then one per
+    # real-part category.
+    method BuildCatMenu {m} {
+        $m delete 0 end
+        $m add command -label "All parts" -command [my callback SetCat all]
+        $m add command -label "Basic elements" -command [my callback SetCat basics]
+        $m add separator
+        foreach c [::schem::parts::categories] {
+            $m add command -label [my TitleCase $c] -command [my callback SetCat $c]
         }
-        $Catbar configure -height [expr {$rows*($h+5)+4}]
     }
 
-    method SetCat {key} { set BinCat $key ; my DrawCatbar ; my PopulateParts }
-    method OnCatbarConfigure {w} {
-        if {[info exists ::schem::gui::_catw] && $::schem::gui::_catw == $w} return
-        set ::schem::gui::_catw $w
-        my DrawCatbar
+    # Placeholder -- show grey hint text in an entry until the user types.
+    method Placeholder {e text} {
+        variable ::schem::gui::T
+        $e insert 0 $text
+        $e configure -fg $T(faint)
+        bind $e <FocusIn> [list apply {{e text dim ink} {
+            if {[$e get] eq $text} { $e delete 0 end ; $e configure -fg $ink }
+        }} $e $text $T(faint) $T(ink)]
+        bind $e <FocusOut> [list apply {{e text dim} {
+            if {[$e get] eq ""} { $e insert 0 $text ; $e configure -fg $dim }
+        }} $e $text $T(faint)]
+    }
+
+    # SetCat -- choose the active category filter; update the button label and
+    # re-filter the list.
+    method SetCat {key} {
+        set BinCat $key
+        if {[info exists CatBtn] && [winfo exists $CatBtn]} {
+            switch -- $key {
+                all     { set label "All" }
+                basics  { set label "Basics" }
+                default { set label [my TitleCase $key] }
+            }
+            $CatBtn configure -text "$label ▾"
+        }
+        my PopulateParts
     }
 
     method BuildCanvas {parent} {
@@ -555,6 +564,7 @@ oo::class create ::schem::gui::App {
         set w [winfo width $Parts] ; if {$w < 20} { set w 232 }
         set ::schem::gui::_binY 4
         set q [string tolower [string trim $BinQuery]]
+        if {$q eq "search parts"} { set q "" }   ;# ignore the placeholder text
         set shown 0
 
         # basic elements
