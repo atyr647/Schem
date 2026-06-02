@@ -105,6 +105,37 @@ ok "delete drops its wires"        {[apply {{app} {
     return 1
 }} $app]}
 
+# ====================================================================
+section "save / load round-trip"
+# ====================================================================
+set app3 [::schem::gui::App new [::schem::new rt]]
+set s3 [$app3 schematic]
+$app3 do pick-primitive battery ; $app3 do click 200 200
+$app3 do pick-part 1N4007 ;       $app3 do click 400 200
+$app3 do pick-primitive resistor ;$app3 do click 600 200
+$app3 do pick-primitive ground ;  $app3 do click 400 400
+$app3 do wire BT1.pos D1.a ; $app3 do wire D1.k R1.a
+$app3 do wire R1.b GND1.t ; $app3 do wire BT1.neg GND1.t
+set tmp [file join [file dirname [info script]] guitmp[pid].schem]
+$app3 do save-to $tmp
+ok "save writes a file"            {[file exists $tmp] && [file size $tmp] > 0}
+set app4 [::schem::gui::App new [::schem::load $tmp]]
+ok "load restores all parts"       {[llength [$app4 do placed]] == 4}
+ok "load restores all wires"       {[llength [$app4 do wires]] == 4}
+ok "part identity recovered"       {[::schem::parts::idOf [$app4 schematic] D1] eq "1N4007"}
+file delete $tmp
+
+# identify a part purely from its model params (no session tag)
+set sx [::schem::new x]
+::schem::parts::place $sx Dx 1N5819
+set sy [::schem::new y]   ;# fresh schematic, never tagged
+$sy add diode Dy -is 3.2e-5 -n 1.05 -rs 0.07 -bv 40
+ok "identify matches by params"    {[::schem::parts::identify $sy Dy] eq "1N5819"}
+ok "non-matching params -> none"   {[apply {{} {
+    set s [::schem::new z] ; $s add diode D -is 1e-14 -n 1 -rs 0 -bv 5
+    expr {[::schem::parts::identify $s D] eq ""}
+}}]}
+
 # --------------------------------------------------------------------
 puts "\n$::T passed, $::F failed"
 exit [expr {$::F > 0}]

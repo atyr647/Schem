@@ -84,7 +84,34 @@ proc ::schem::parts::tag {s name id} {
 proc ::schem::parts::idOf {s name} {
     variable TAG
     set k [list $s $name]
-    return [expr {[dict exists $TAG $k] ? [dict get $TAG $k] : ""}]
+    if {[dict exists $TAG $k]} { return [dict get $TAG $k] }
+    # Not tagged in this session (e.g. the board was loaded from a .schem): try
+    # to recover the part by matching the instance's model params to a catalog
+    # entry of the same type.  A part whose engine params exactly match a known
+    # device IS that device -- so identity survives a save/load round-trip.
+    return [::schem::parts::identify $s $name]
+}
+
+# identify -- which catalog part (if any) an instance's current params match.
+proc ::schem::parts::identify {s name} {
+    variable DB
+    if {[catch {$s typeof $name} type]} { return "" }
+    if {[catch {$s get $name} params]} { return "" }
+    dict for {id spec} $DB {
+        if {[dict get $spec type] ne $type} continue
+        set model [dict get $spec model]
+        if {[dict size $model] == 0} continue   ;# nothing distinctive to match
+        set match 1
+        dict for {k v} $model {
+            if {![dict exists $params $k]} { set match 0 ; break }
+            set pv [dict get $params $k]
+            if {[string is double -strict $v] && [string is double -strict $pv]} {
+                if {abs($pv - $v) > abs($v)*1e-6 + 1e-12} { set match 0 ; break }
+            } elseif {$pv ne $v} { set match 0 ; break }
+        }
+        if {$match} { return $id }
+    }
+    return ""
 }
 
 # ===========================================================================

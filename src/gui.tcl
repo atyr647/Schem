@@ -76,7 +76,12 @@ oo::class create ::schem::gui::App {
         set Counter [dict create] ; set Grid 20 ; set PendWire "" ; set Result none
         set Pending ""
         my BuildUI [expr {$parent eq "" ? "." : $parent}]
-        my Redraw
+        if {$schem ne ""} {
+            # opened with an existing board -- lay it out on the canvas
+            my RebuildFromSchematic
+        } else {
+            my Redraw
+        }
         my SetStatus "Ready.  Drag a part from the bin, or click a part then click the canvas."
     }
 
@@ -97,6 +102,7 @@ oo::class create ::schem::gui::App {
             wire           { my AddWire {*}$args }
             set-param      { my SetParam [lindex $args 0] [lindex $args 1] [lindex $args 2] }
             sync-wires     { my RebuildFromSchematic }
+            save-to        { set File [lindex $args 0] ; my CmdSave }
             placed         { return [dict keys $Placed] }
             wires          { return $Wires }
             result         { return $Result }
@@ -376,6 +382,7 @@ oo::class create ::schem::gui::App {
         if {![winfo exists $Canvas]} return
         $Canvas delete all
         my DrawGrid
+        if {[dict size $Placed] == 0} { my DrawWelcome ; return }
         # wires first (under symbols)
         foreach w $Wires { my DrawWire $w }
         # pending wire rubber-band handled in OnHover
@@ -383,6 +390,30 @@ oo::class create ::schem::gui::App {
         dict for {name pl} $Placed { my DrawComponent $name }
         # selection halo
         if {$Sel ne "" && [dict exists $Placed $Sel]} { my DrawSelection $Sel }
+    }
+
+    # DrawWelcome -- the empty-board hint: a quiet pointer to the workflow, so a
+    # first-time user (or an EE sizing the tool up) knows exactly what to do.
+    method DrawWelcome {} {
+        variable ::schem::gui::T
+        lassign [my CanvasSize] W H
+        set cx [expr {$W/2}] ; set cy [expr {$H/2 - 40}]
+        $Canvas create text $cx $cy -text "Build a circuit" -fill $T(dim) \
+            -font {TkDefaultFont 20 bold} -tags welcome
+        set lines {
+            "1.  Click a part in the bin on the left"
+            "2.  Click the canvas to place it"
+            "3.  Wire tool: click a pin, then another pin"
+            "4.  Solve (F5), then Probe nodes"
+            "5.  Design review checks parts vs datasheet ratings"
+            "6.  Manufacture -> Export PCB (KiCad + BOM)"
+        }
+        set y [expr {$cy + 44}]
+        foreach ln $lines {
+            $Canvas create text $cx $y -text $ln -fill $T(faint) \
+                -font {TkDefaultFont 11} -tags welcome
+            incr y 26
+        }
     }
 
     method DrawGrid {} {
@@ -706,12 +737,19 @@ oo::class create ::schem::gui::App {
     method ShowBoardSummary {} {
         variable ::schem::gui::T
         label $Insp.sum -text "Board: [dict size $Placed] part(s), [llength $Wires] wire(s)" \
-            -bg $T(panel) -fg $T(dim) -anchor w
+            -bg $T(panel) -fg $T(dim) -anchor w -wraplength 250 -justify left
         pack $Insp.sum -fill x -anchor w -pady {16 0}
         if {$Result eq "solved"} {
             label $Insp.solved -text "Solved.  Use Probe to read nodes." -bg $T(panel) \
                 -fg $T(accent) -anchor w -wraplength 250 -justify left
             pack $Insp.solved -fill x -anchor w
+        }
+        # a couple of real-part placements get a one-line nudge toward the
+        # design review -- the workflow an EE expects next.
+        if {[dict size $Placed] > 0 && $Result ne "solved"} {
+            label $Insp.hint -text "Press F5 to solve, then Manufacture -> Design review to check parts against their ratings." \
+                -bg $T(panel) -fg $T(faint) -anchor w -wraplength 250 -justify left
+            pack $Insp.hint -fill x -anchor w -pady {8 0}
         }
     }
 
