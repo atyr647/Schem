@@ -124,6 +124,21 @@ oo::define ::schem::Schematic {
                         emf [expr {double([dict get $pr emf])}] \
                         rs [expr {double([dict get $pr esr])}]]
                 }
+                vsource {
+                    # A time-varying voltage source: v(t) = voff + vac*sin(2*pi*f*t + phase).
+                    # At DC (Tnow = 0) it sits at voff + vac*sin(phase); the
+                    # transient analyser advances Tnow so it traces a real
+                    # sinusoid -- the mains/secondary waveform an AC-DC supply
+                    # rectifies.  `vac` is the amplitude (peak), not RMS.
+                    set vac   [expr {double([dict get $pr vac])}]
+                    set freq  [expr {double([dict get $pr freq])}]
+                    set voff  [expr {double([dict get $pr voff])}]
+                    set phase [expr {double([dict get $pr phase])}]
+                    set e [expr {$voff + $vac*sin(2*3.141592653589793*$freq*$Tnow + $phase)}]
+                    lappend br [dict create owner $name kind battery \
+                        p [my NodeOf $name.pos] q [my NodeOf $name.neg] \
+                        emf $e rs [expr {double([dict get $pr esr])}]]
+                }
                 breaker {
                     if {[dict get $pr state] eq "closed"} {
                         lappend br [dict create owner $name kind breaker \

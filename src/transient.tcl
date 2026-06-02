@@ -86,6 +86,7 @@ oo::define ::schem::Schematic {
         set nsteps [expr {int(ceil($duration/$dt))}]
         for {set step 0} {$step <= $nsteps} {incr step} {
             set tnow [expr {$step * $dt}]
+            set Tnow $tnow      ;# time-varying sources (vsource) read this
 
             # Apply any scheduled stimulus that is now due (time <= tnow).
             while {[llength $sched] && [lindex $sched 0 0] <= $tnow + 1e-12} {

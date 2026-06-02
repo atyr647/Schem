@@ -54,6 +54,7 @@ namespace eval ::schem {
     variable META
     array set META {
         battery   {terminals {pos neg}     params {emf 9.0 esr 0.0}}
+        vsource   {terminals {pos neg}     params {vac 0.0 freq 60.0 voff 0.0 phase 0.0 esr 0.0}}
         ground    {terminals {t}           params {}}
         resistor  {terminals {a b}         params {r 1000.0}}
         capacitor {terminals {a b}         params {c 1e-6 v0 0.0 esr 0.0 rleak 0.0}}
@@ -113,6 +114,7 @@ oo::class create ::schem::Schematic {
                        ;# with the power off, so powerReset must NOT clear this
                        ;# (only an explicit degauss does).
     variable NodeDirty ;# 1 when the wiring changed and nodes must be rebuilt
+    variable Tnow      ;# current transient time (s); drives time-varying sources
     variable Name
 
     constructor {{name schematic}} {
@@ -128,6 +130,15 @@ oo::class create ::schem::Schematic {
         set Core [dict create]
         set Node [dict create]
         set NodeDirty 1
+        set Tnow 0.0
+    }
+
+    # tnow -- set/get the transient clock that time-varying sources read.  The
+    # transient analyser advances this each step; DC analysis leaves it at 0,
+    # where a vsource sits at its offset (voff) -- its quiescent operating point.
+    method tnow {args} {
+        if {[llength $args]} { set Tnow [expr {double([lindex $args 0])}] }
+        return $Tnow
     }
 
     method name {} { return $Name }

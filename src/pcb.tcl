@@ -37,6 +37,7 @@ namespace eval ::schem::pcb {
     variable MAP
     array set MAP {
         battery     {prefix BT fp {Connector_BarrelJack:BarrelJack_Horizontal}          place 1 desc "Battery / DC source"}
+        vsource     {prefix J  fp {Connector_THT:Screw_Terminal_01x02_P5.08mm}          place 1 desc "AC / signal source input"}
         resistor    {prefix R  fp {Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal} place 1 desc "Resistor"}
         capacitor   {prefix C  fp {Capacitor_THT:CP_Radial_D5.0mm_P2.50mm}              place 1 desc "Capacitor"}
         inductor    {prefix L  fp {Inductor_THT:L_Radial_D7.5mm_P5.00mm}                place 1 desc "Inductor"}
