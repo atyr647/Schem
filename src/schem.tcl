@@ -26,6 +26,7 @@ source [file join $_dir format.tcl]
 source [file join $_dir render.tcl]
 source [file join $_dir zoom.tcl]
 source [file join $_dir svg.tcl]
+source [file join $_dir pcb.tcl]
 source [file join $_dir validate.tcl]
 source [file join $_dir editor.tcl]
 unset _dir

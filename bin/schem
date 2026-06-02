@@ -31,6 +31,7 @@ proc usage {} {
     puts stderr "       schem validate FILE.schem"
     puts stderr "       schem netlist FILE.schem"
     puts stderr "       schem ir      FILE.schem            (the Circuit IR)"
+    puts stderr "       schem pcb     FILE.schem OUTBASE    (KiCad netlist + BOM for fab)"
     puts stderr "       schem emit    TARGET FILE.schem ?opts?   (TARGET: zig; opts: -digital ?-cycles N -events {..}? | -transient -duration T -dt DT)"
     exit 2
 }
@@ -146,6 +147,25 @@ switch -- $cmd {
         set n [schem::svgFile $s $outp -level $level -title [file tail $in]]
         set eff [::schem::zoom::clamp $s $level]
         puts "wrote $outp ($n bytes, zoom $eff/$max=[::schem::zoom::levelName $eff $max])"
+        exit 0
+    }
+
+    pcb {
+        # schem pcb FILE.schem OUTBASE
+        # Export the files a board house needs: a KiCad netlist (OUTBASE.net)
+        # and a BOM (OUTBASE.csv).  Import the .net into KiCad's PCB editor to
+        # place, route and emit the Gerbers PCBWay manufactures from.
+        if {[llength $rest] != 2} { usage }
+        lassign $rest in base
+        set s [schem::load $in]
+        set res [::schem::pcb::export $s $base]
+        puts "wrote [dict get $res netlist] (KiCad netlist)"
+        puts "wrote [dict get $res bom] (bill of materials)"
+        set w [dict get $res warnings]
+        if {[llength $w]} {
+            puts "[llength $w] manufacturability note(s):"
+            foreach msg $w { puts "  ! $msg" }
+        }
         exit 0
     }
 
