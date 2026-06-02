@@ -314,6 +314,7 @@ Makefile            make test / test-engine / gui / examples / lint / clean
 | Install (Windows/macOS/Linux, GUI, Zig) | [docs/INSTALL.md](docs/INSTALL.md) |
 | Language definition | [docs/LANGUAGE.md](docs/LANGUAGE.md) |
 | The visual workbench | [docs/GUI.md](docs/GUI.md) |
+| GUI screenshots (every screen) | [docs/screenshots/](docs/screenshots/) |
 | Real parts & ratings | [docs/PARTS.md](docs/PARTS.md) |
 | PCB export & images | [docs/IR.md](docs/IR.md), [docs/IMAGE.md](docs/IMAGE.md) |
 | Buses / zoom / I-O parts | [docs/BUS.md](docs/BUS.md), [docs/ZOOM.md](docs/ZOOM.md), [docs/IO.md](docs/IO.md) |
