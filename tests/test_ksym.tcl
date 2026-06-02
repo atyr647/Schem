@@ -7,8 +7,8 @@ if {[catch {package require Tk}]} { puts "# no Tk -- skipped" ; puts "0 passed, 
 if {[catch {wm withdraw .}]} { puts "# no display -- skipped" ; puts "0 passed, 0 failed" ; exit 0 }
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. src symbols.tcl]
-source [file join $here .. src ksym.tcl]
+source [file join $here .. src view symbols.tcl]
+source [file join $here .. src view ksym.tcl]
 
 set ::T 0 ; set ::F 0
 proc ok {n c} { if {[uplevel 1 [list expr $c]]} { incr ::T ; puts "ok   - $n" } else { incr ::F ; puts "FAIL - $n" } }

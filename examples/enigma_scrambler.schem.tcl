@@ -13,8 +13,8 @@
 # board that results is pure Schem (components + wires), and matches the
 # reference Enigma's scrambler(A) at this setting.
 set here [file dirname [file normalize [info script]]]
-source [file join $here .. lib enigma.tcl]
-source [file join $here .. lib enigma_schem.tcl]
+source [file join $here .. lib crypto enigma.tcl]
+source [file join $here .. lib crypto enigma_schem.tcl]
 
 set wheels {I II III} ; set rings AAA ; set pos {0 0 0} ; set refl B
 

@@ -17,10 +17,10 @@
 #
 #   tclsh examples/bombe_break.tcl
 set here [file dirname [file normalize [info script]]]
-source [file join $here .. lib enigma.tcl]
-source [file join $here .. lib bombe.tcl]
+source [file join $here .. lib crypto enigma.tcl]
+source [file join $here .. lib crypto bombe.tcl]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib bombe_schem.tcl]
+source [file join $here .. lib crypto bombe_schem.tcl]
 
 set wheels {I II III} ; set rings AAA ; set refl B
 set SECRET QER

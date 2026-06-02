@@ -279,41 +279,32 @@ above); they skip cleanly when no toolchain is present.
 
 ## Repository layout
 
+Each directory is one concern; see [CONTRIBUTING.md](CONTRIBUTING.md) for the
+full map.
+
 ```
-docs/LANGUAGE.md      the language definition (the manifesto / spec)
-docs/ROADMAP.md       architecture: source object model, derived netlist
-docs/FORMAT.md        the binary .schem project file
-docs/INTERPRETER.md   engine internals + full API reference
-docs/IR.md            Circuit IR + interchangeable backends (Zig, dcref, digref, digseq)
-src/schem.tcl         package entry point
-src/solver.tcl        dense linear solver (Gaussian elimination)
-src/engine.tcl        schematic object model + component metadata
-src/simulate.tcl      nodal analysis, Newton + fixed-point solve, tools
-src/transient.tcl     time-domain analysis (capacitors / inductors)
-src/hierarchy.tcl     Component → Circuit → Panel → Grid
-src/format.tcl        binary .schem save / load
-src/netlist.tcl       derived netlist / IR (build cache)
-src/compile.tcl       the Circuit IR (lowered, backend-agnostic compile target)
-src/backend.tcl       interchangeable backends over the IR (zig, dcref, digref, digseq)
-src/render.tcl        the viewer (draws the schematic as a wired diagram)
-src/svg.tcl           SVG renderer + semantic zoom levels
-src/zoom.tcl          level-of-detail collapse (grid → component)
-src/bus.tcl           bus / bank / repeat / connect drafting primitives
-src/pcb.tcl           PCB export: KiCad netlist + BOM
-src/symbols.tcl       schematic symbols (IEC 60617 + ANSI/IEEE 315)
-src/gui.tcl           the drag-and-drop workbench (Tcl/Tk)
-src/validate.tcl      anti-spaghetti + electrical validation
-src/editor.tcl        the terminal workbench (EditorSession)
-lib/logic.tcl         relay standard-cell library (gates, adder, latch)
-lib/standard.tcl      standard panel circuits (timers, one-shot, debounce, ...)
-lib/catalog.tcl       circuit catalog (register, adder, counter, decoder, selector)
-lib/parts.tcl         real parts: datasheet SPICE models + rated limits
-lib/ratings.tcl       design review (operating point vs absolute-max ratings)
-bin/schem             CLI front end (run/save/open/edit/gui/pcb/validate/netlist/ir/emit)
-bin/schem-gui         the Tk workbench launcher
-examples/             runnable schematics (incl. power_supply, ac_dc_supply)
-tests/                regression suites (engine, parts, GUI, PCB, zoom, bus, ...)
-LICENSE               MIT License (attribution required — keep the copyright notice)
+bin/                CLI launcher (schem) + Tk launcher (schem-gui)
+src/
+  schem.tcl         entry point — sources the engine tree in order
+  core/             the engine: engine, solver, simulate (MNA), transient,
+                    ac, hierarchy, bus
+  io/               persistence + derived forms: format (.schem), netlist,
+                    compile (Circuit IR), validate
+  backend/          IR backends: backend (dispatch), zig, dcref, digital
+  view/             rendering (no Tk): render, svg, zoom, symbols, ksym
+  export/           pcb (KiCad netlist + BOM)
+  gui/              the Tk workbench: load, app, menu, partsbin, canvas,
+                    inspector, analysis, commands
+  tui/              editor (terminal workbench core)
+lib/
+  logic/            relay logic, standard circuits, circuit catalog
+  parts/            real parts (SPICE models) + ratings (design review)
+  crypto/           the worked machine: enigma + bombe
+  symbols/          vendored KiCad schematic symbols
+docs/               one markdown file per subsystem (+ INSTALL, ASSESSMENT)
+examples/           runnable schematics (power_supply, ac_dc_supply, ...)
+tests/              one test_<area>.tcl per subsystem + run.tcl (the runner)
+Makefile            make test / test-engine / gui / examples / lint / clean
 ```
 
 ## Documentation

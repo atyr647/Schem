@@ -16,8 +16,8 @@
 # examples/ac_dc_supply.tcl for a real full-wave bridge rectifier.
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib parts.tcl]
-source [file join $here .. lib ratings.tcl]
+source [file join $here .. lib parts parts.tcl]
+source [file join $here .. lib parts ratings.tcl]
 
 proc rule {t} { puts "\n========== $t ==========" }
 

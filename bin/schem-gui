@@ -15,11 +15,9 @@ catch {encoding system utf-8}
 set bindir [file dirname [file normalize [info script]]]
 set root [file dirname $bindir]
 source [file join $root src schem.tcl]
-source [file join $root src symbols.tcl]
-source [file join $root src ksym.tcl]
-source [file join $root lib parts.tcl]
-source [file join $root lib ratings.tcl]
-source [file join $root src gui.tcl]
+source [file join $root lib parts parts.tcl]
+source [file join $root lib parts ratings.tcl]
+source [file join $root src gui load.tcl]
 
 set initial ""
 if {$argc >= 1} { set initial [lindex $argv 0] }

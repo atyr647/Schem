@@ -18,16 +18,16 @@ priority; checked items are already in place.
 - [x] **Lint target** — `make lint` (trailing whitespace, tabs).
 - [x] **Consistent style already** — 4-space indent, no tabs, per-file header
       comments, lower/Upper method export convention.
+- [x] **Compartmentalised source tree** — `src/` split into `core/ io/
+      backend/ view/ export/ gui/ tui/` and `lib/` into `logic/ parts/
+      crypto/ symbols/`, one concern per directory, one topic per file.
+- [x] **Split the two large files** — `gui.tcl` (1962) → `gui/{app,menu,
+      partsbin,canvas,inspector,analysis,commands}.tcl` via `oo::define`;
+      `backend.tcl` (1806) → `backend/{backend,dcref,zig,digital}.tcl`.
+      No file now exceeds ~760 lines.
 
 ## Near-term (low effort, high tidiness)
 
-- [ ] **Split `src/gui.tcl` (1962 lines).**  It's the one large file.  Carve
-      into `gui_canvas.tcl` (draw/interaction), `gui_panels.tcl` (parts bin,
-      inspector, toolbar), `gui_dialogs.tcl` (transient/AC/compile/netlist),
-      keeping the `App` class via `oo::define` across files — exactly how the
-      engine is already split.  Mechanical, no behaviour change.
-- [ ] **Split `src/backend.tcl` (1806 lines)** by backend (zig / dcref /
-      digref) the same way.
 - [ ] **A `VERSION` constant + `CHANGELOG.md`.**  Tag releases (`v0.1.0`) so
       users can cite a version; the assessment already implies a baseline.
 - [ ] **`make lint` → fail (not warn) on whitespace/tabs**, and wire it as a
@@ -56,8 +56,8 @@ priority; checked items are already in place.
 
 ## Longer-term (contributor scale)
 
-- [ ] **Plugin discovery for parts and backends.**  `lib/parts.tcl` is one
-      file; let `lib/parts/*.tcl` be auto-sourced so part libraries can be
+- [ ] **Plugin discovery for parts and backends.**  `lib/parts/` is now a
+      directory; let `lib/parts/*.tcl` be auto-sourced so part libraries can be
       contributed independently (rectifiers, regulators, logic, RF…).
 - [ ] **A component/parts reference page generated from the source** (the META
       table + the parts DB) so docs can't drift from code.
@@ -87,6 +87,6 @@ These are what keep the codebase coherent; enforce them in review:
 |--------|-----|------|
 | Test suites / cases | 19 / ~430 | grows with features |
 | `TODO`/`FIXME` count | 0 | 0 |
-| Largest source file | gui.tcl 1962 | < 1500 after split |
-| CI status | (new) green | green on main |
+| Largest source file | zig.tcl 762 | < 1500 |
+| CI status | green | green on main |
 | Docs per subsystem | 1:1 | 1:1 |

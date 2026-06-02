@@ -43,7 +43,7 @@ breakers) — the same structure SPICE uses.
 
 1. **"The diode is wrong, unless that is an SCR."** — The hand-drawn diode
    glyph was ambiguous.  Fixed by importing the real KiCad diode symbol
-   (`src/ksym.tcl`, `lib/symbols/standard.kicad_lib`); it is unambiguously a
+   (`src/view/ksym.tcl`, `lib/symbols/standard.kicad_lib`); it is unambiguously a
    2-terminal diode with the cathode bar, and its A/K pins map to the engine so
    forward bias conducts and reverse blocks (`tests/test_ksym.tcl`).
 2. **"The battery isn't placed right."** — Replaced with KiCad's

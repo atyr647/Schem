@@ -21,11 +21,9 @@ if {[catch {wm withdraw .}]} {
 wm deiconify .
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. src symbols.tcl]
-source [file join $here .. src ksym.tcl]
-source [file join $here .. lib parts.tcl]
-source [file join $here .. lib ratings.tcl]
-source [file join $here .. src gui.tcl]
+source [file join $here .. lib parts parts.tcl]
+source [file join $here .. lib parts ratings.tcl]
+source [file join $here .. src gui load.tcl]
 
 set ::T 0 ; set ::F 0
 proc ok {name cond} {

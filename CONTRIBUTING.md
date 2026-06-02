@@ -19,39 +19,64 @@ change merged.
 
 ## Project layout
 
+Each directory is one concern.  `src/schem.tcl` sources the engine tree in
+dependency order; the GUI is loaded separately by `src/gui/load.tcl` (it needs
+Tk).  The engine is one class `::schem::Schematic`, declared in
+`core/engine.tcl` and extended across files with `oo::define` — so a file holds
+a *topic*, not a fragment.
+
 ```
 bin/        schem (CLI launcher), schem-gui (Tk launcher)
-src/        the engine + tooling
-  schem.tcl       entry point; sources everything in order
-  engine.tcl      object model + component metadata (the META table)
-  solver.tcl      linear algebra (Gaussian elimination)
-  simulate.tcl    nodal analysis: MNA + Newton + fixed-point
-  ac.tcl          AC / frequency-domain analysis
-  transient.tcl   time-domain analysis
-  hierarchy.tcl   Component -> Circuit -> Panel -> Grid
-  bus.tcl         bus / bank / repeat / connect drafting primitives
-  netlist.tcl     derived netlist IR
-  compile.tcl     the Circuit IR (backend-agnostic compile target)
-  backend.tcl     backends over the IR (zig, dcref, ...)
-  format.tcl      binary .schem save / load
-  render.tcl      ASCII schematic viewer
-  svg.tcl         SVG renderer + semantic zoom
-  zoom.tcl        level-of-detail collapse
-  pcb.tcl         PCB export (KiCad netlist + BOM)
-  symbols.tcl     hand-drawn fallback symbols
-  ksym.tcl        KiCad symbol importer (the primary symbols)
-  editor.tcl      headless terminal editor core
-  gui.tcl         the Tk workbench
-lib/        libraries built ON the engine
-  logic.tcl, standard.tcl, catalog.tcl   relay logic / circuits
-  parts.tcl       real parts: datasheet SPICE models + ratings
-  ratings.tcl     design review against absolute-max ratings
-  enigma*.tcl, bombe*.tcl                 the worked cryptanalysis machine
-  symbols/standard.kicad_lib              vendored KiCad symbols
+src/
+  schem.tcl       entry point; sources the tree below in order
+  core/           THE ENGINE
+    engine.tcl      object model + component metadata (the META table)
+    solver.tcl      linear algebra (Gaussian elimination)
+    simulate.tcl    nodal analysis: MNA + Newton + fixed-point
+    transient.tcl   time-domain analysis
+    ac.tcl          AC / frequency-domain analysis
+    hierarchy.tcl   Component -> Circuit -> Panel -> Grid
+    bus.tcl         bus / bank / repeat / connect drafting primitives
+  io/             PERSISTENCE + DERIVED FORMS
+    format.tcl      binary .schem save / load
+    netlist.tcl     derived netlist IR
+    compile.tcl     the Circuit IR (backend-agnostic compile target)
+    validate.tcl    anti-spaghetti + electrical design-rule checks
+  backend/        IR BACKENDS
+    backend.tcl     dispatch (emit/backends) + shared MNA/device helpers
+    dcref.tcl       Tcl reference DC backend (verifies the engine)
+    zig.tcl         Zig DC + transient backend ("compile to Zig")
+    digital.tcl     digital backends (boolean eval + Zig digital)
+  view/           RENDERING (no Tk dependency at parse time)
+    render.tcl      ASCII schematic viewer
+    svg.tcl         SVG renderer + semantic zoom
+    zoom.tcl        level-of-detail collapse
+    symbols.tcl     hand-drawn fallback symbols
+    ksym.tcl        KiCad symbol importer (the primary symbols)
+  export/
+    pcb.tcl         PCB export (KiCad netlist + BOM)
+  gui/            THE TK WORKBENCH (load.tcl pulls these together)
+    app.tcl         the App class: state, constructor, core/dispatch
+    menu.tcl        menu bar + custom toolbar
+    partsbin.tcl    parts bin: search, filter, symbol rows, drag-and-drop
+    canvas.tcl      grid, symbols, wires, zoom, placement, interaction
+    inspector.tcl   properties / measured values / ratings panel
+    analysis.tcl    transient scope, AC Bode, compile/netlist viewers
+    commands.tcl    file/edit/simulate/manufacture command handlers
+  tui/
+    editor.tcl      terminal workbench core (EditorSession)
+lib/            LIBRARIES BUILT ON THE ENGINE
+  logic/          logic.tcl, standard.tcl, catalog.tcl  (relay logic/circuits)
+  parts/          parts.tcl (SPICE models), ratings.tcl (design review)
+  crypto/         enigma*, bombe*  (the worked cryptanalysis machine)
+  symbols/        standard.kicad_lib  (vendored KiCad symbols)
 docs/       one markdown file per subsystem
 tests/      one test_<area>.tcl per subsystem + run.tcl (the runner)
 examples/   runnable circuits
 ```
+
+When a file crosses ~1500 lines, split it along its seams the same way
+(`oo::define` for class methods; one `proc` group per file otherwise).
 
 ## Coding conventions
 
@@ -75,20 +100,20 @@ The codebase is consistent; match what's already there.
 ## Adding things
 
 ### A new component (engine primitive)
-1. Add it to the `META` array in `src/engine.tcl` (terminals + default params).
-2. Stamp its behaviour in `src/simulate.tcl` (DC), and `transient.tcl`/`ac.tcl`
+1. Add it to the `META` array in `src/core/engine.tcl` (terminals + default params).
+2. Stamp its behaviour in `src/core/simulate.tcl` (DC), and `transient.tcl`/`ac.tcl`
    if it's reactive/dynamic.
-3. If it should appear on a PCB, add a footprint mapping in `src/pcb.tcl`.
-4. Add a symbol: map it in `src/ksym.tcl`'s `TYPEMAP` to a KiCad symbol, or add
-   a hand-drawn drawer in `src/symbols.tcl`.
+3. If it should appear on a PCB, add a footprint mapping in `src/export/pcb.tcl`.
+4. Add a symbol: map it in `src/view/ksym.tcl`'s `TYPEMAP` to a KiCad symbol, or add
+   a hand-drawn drawer in `src/view/symbols.tcl`.
 5. Write `tests/test_<area>.tcl` cases with a hand-checked value.
 
 ### A new real part
-Add a `::schem::parts::def` block in `lib/parts.tcl` with the manufacturer's
+Add a `::schem::parts::def` block in `lib/parts/parts.tcl` with the manufacturer's
 SPICE `model` parameters and datasheet `limits`.  See `docs/PARTS.md`.
 
 ### A new backend
-Add `proc ::schem::backend::<name>` in `src/backend.tcl` consuming the Circuit
+Add `proc ::schem::backend::<name>` in a new `src/backend/<name>.tcl` consuming the Circuit
 IR (`$s compile`).  It's auto-discovered by `::schem::backends`.
 
 ## Tests

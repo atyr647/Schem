@@ -35,10 +35,6 @@ examples:
 
 # Lightweight hygiene checks.
 lint:
-	@echo "Checking Tcl syntax (source-parse each file)..."
-	@ok=1; for f in src/*.tcl lib/*.tcl; do \
-		$(TCLSH) -e "if {[catch {set ::argv0 $$f; source $$f} e]} {exit 0}" >/dev/null 2>&1 || true; done; \
-		echo "  (run 'make test' for behavioural verification)"
 	@echo "Checking for trailing whitespace..."
 	@! grep -rnE ' +$$' src/ lib/ tests/ --include='*.tcl' || echo "  ^ trailing whitespace found"
 	@echo "Checking for tabs in source..."

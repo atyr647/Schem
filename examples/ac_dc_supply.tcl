@@ -19,8 +19,8 @@
 # the leftover sag is the ripple.
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib parts.tcl]
-source [file join $here .. lib ratings.tcl]
+source [file join $here .. lib parts parts.tcl]
+source [file join $here .. lib parts ratings.tcl]
 
 # Build the bridge.  Secondary: 12 V RMS -> ~17 V peak.
 set s [schem::new ac_dc]

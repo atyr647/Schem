@@ -14,8 +14,8 @@ namespace import ::tcltest::*
 
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib logic.tcl]
-source [file join $here .. lib catalog.tcl]
+source [file join $here .. lib logic logic.tcl]
+source [file join $here .. lib logic catalog.tcl]
 
 # elem -- find the element named `name` in a CIR.
 proc elem {cir name} {

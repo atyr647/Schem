@@ -28,7 +28,7 @@ MENU/CAB_A#7
 
 is a sequence of **tiers** — `[MENU, CAB_A, 7]` (panel → cable → conductor).
 Zoom level *d* keeps the first *d+1* tiers as the collapse key; everything
-sharing that key draws as one box (`src/zoom.tcl`):
+sharing that key draws as one box (`src/view/zoom.tcl`):
 
 | level | `MENU/CAB_A#7` resolves to | what you see |
 |------:|---------------------------|--------------|

@@ -13,8 +13,8 @@
 
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib logic.tcl]
-source [file join $here .. lib catalog.tcl]
+source [file join $here .. lib logic logic.tcl]
+source [file join $here .. lib logic catalog.tcl]
 
 # a panel = a counter circuit with its ports lifted to the panel boundary
 proc counter_panel {name} {

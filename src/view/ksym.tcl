@@ -51,7 +51,7 @@ proc ::schem::ksym::load {{path ""}} {
     if {$LOADED} return
     if {$path eq ""} {
         variable DIR
-        set path [file join $DIR .. lib symbols standard.kicad_lib]
+        set path [file join $DIR .. .. lib symbols standard.kicad_lib]
     }
     set fh [open $path r] ; set lines [split [read $fh] \n] ; close $fh
     set type "" ; set cur ""
