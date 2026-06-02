@@ -61,15 +61,29 @@ breakers). Capacitors and inductors are time-stepped with companion models.
 
 ## Requirements
 
-A Tcl interpreter (Tcl 8.6+, which ships with TclOO):
+A Tcl interpreter (**Tcl 8.6+**, which ships with TclOO). The visual workbench
+additionally needs **Tk**:
 
 ```sh
-sudo apt-get install tcl        # Debian/Ubuntu
+sudo apt-get install tcl tk     # Debian/Ubuntu  (tk pulls in the GUI deps)
+sudo dnf install tcl tk         # Fedora/RHEL
 brew install tcl-tk             # macOS
 ```
 
-No other runtime dependencies. The optional Zig backend requires Zig 0.13.0
-(see below).
+On **Windows**, install Tcl/Tk via the
+[Magicsplat installer](https://www.magicsplat.com/tcl-installer/) and run
+`tclsh bin\schem …` / `wish bin\schem-gui`.
+
+No other runtime dependencies. The optional "compile to Zig" backend requires
+Zig 0.13.0. **Full per-platform install instructions (Windows, macOS, Linux,
+the GUI, the Zig backend, troubleshooting) are in
+[docs/INSTALL.md](docs/INSTALL.md).**
+
+Verify your install:
+
+```sh
+make test          # runs the full regression suite
+```
 
 ## Quick start
 
@@ -302,7 +316,31 @@ tests/                regression suites (engine, parts, GUI, PCB, zoom, bus, ...
 LICENSE               MIT License (attribution required — keep the copyright notice)
 ```
 
+## Documentation
+
+| Topic | Doc |
+|-------|-----|
+| Install (Windows/macOS/Linux, GUI, Zig) | [docs/INSTALL.md](docs/INSTALL.md) |
+| Language definition | [docs/LANGUAGE.md](docs/LANGUAGE.md) |
+| The visual workbench | [docs/GUI.md](docs/GUI.md) |
+| Real parts & ratings | [docs/PARTS.md](docs/PARTS.md) |
+| PCB export & images | [docs/IR.md](docs/IR.md), [docs/IMAGE.md](docs/IMAGE.md) |
+| Buses / zoom / I-O parts | [docs/BUS.md](docs/BUS.md), [docs/ZOOM.md](docs/ZOOM.md), [docs/IO.md](docs/IO.md) |
+| Worked machine (Enigma/Bombe) | [docs/BOMBE.md](docs/BOMBE.md) |
+| Correctness assessment | [docs/ASSESSMENT.md](docs/ASSESSMENT.md) |
+| Maintenance / health plan | [docs/MAINTENANCE.md](docs/MAINTENANCE.md) |
+
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the codebase
+layout, conventions, and how to add a component, a real part, or a backend.
+`make test` must stay green and engine changes need a hand-verified value.
+
 ## License
 
 [MIT License](LICENSE) — use it for anything, but keep the copyright notice.
 Copyright © 2026 Adam Tyrone.
+
+The vendored schematic symbols in `lib/symbols/standard.kicad_lib` are from the
+[KiCad symbol library](https://gitlab.com/kicad/libraries/kicad-symbols)
+(CC-BY-SA 4.0 with the library exception).
