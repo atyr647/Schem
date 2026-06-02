@@ -111,6 +111,33 @@ puts "Vout = [$s probe R1.b] V"     ;# -> 6.0
 puts "I    = [$s current R1] A"     ;# -> 0.003
 ```
 
+## The visual workbench (GUI)
+
+A drag-and-drop schematic editor in pure Tcl/Tk:
+
+```sh
+$ schem gui                  # blank board
+$ schem gui board.schem      # open an existing board
+```
+
+Place parts from a catalog (raw elements *and* real devices grouped by job --
+rectifier, smoothing, transistor, ...), wire pin-to-pin, **Solve** for the DC
+operating point, probe nodes, and run a **Design review** that checks every
+real part against its datasheet ratings -- over-limit parts turn red on the
+schematic.  Symbols draw in ANSI/IEEE 315 or IEC 60617 (toggle with `T`).
+Export an SVG drawing, or a **KiCad netlist + BOM** for the board house.
+Requires Tk (`apt-get install tk`).  See `docs/GUI.md`.
+
+## Real parts & ratings
+
+Design with actual devices that have datasheet specs and limits, not anonymous
+primitives -- a 1N4007 (1000 V, 1 A) vs a 1N5819 Schottky (40 V, low drop).
+Each part carries the manufacturer's SPICE model (so it simulates like the real
+thing) and its absolute-max ratings (so the review catches a part pushed past
+them).  Power-supply parts first: rectifiers, smoothing caps, regulators,
+power MOSFETs.  See `docs/PARTS.md`; a worked AC-DC supply is in
+`examples/ac_dc_supply.tcl`.
+
 ## Zig backend (optional)
 
 `schem emit zig` generates self-contained Zig programs that reproduce the
@@ -255,14 +282,23 @@ src/netlist.tcl       derived netlist / IR (build cache)
 src/compile.tcl       the Circuit IR (lowered, backend-agnostic compile target)
 src/backend.tcl       interchangeable backends over the IR (zig, dcref, digref, digseq)
 src/render.tcl        the viewer (draws the schematic as a wired diagram)
+src/svg.tcl           SVG renderer + semantic zoom levels
+src/zoom.tcl          level-of-detail collapse (grid → component)
+src/bus.tcl           bus / bank / repeat / connect drafting primitives
+src/pcb.tcl           PCB export: KiCad netlist + BOM
+src/symbols.tcl       schematic symbols (IEC 60617 + ANSI/IEEE 315)
+src/gui.tcl           the drag-and-drop workbench (Tcl/Tk)
 src/validate.tcl      anti-spaghetti + electrical validation
-src/editor.tcl        the interactive workbench (EditorSession)
+src/editor.tcl        the terminal workbench (EditorSession)
 lib/logic.tcl         relay standard-cell library (gates, adder, latch)
 lib/standard.tcl      standard panel circuits (timers, one-shot, debounce, ...)
 lib/catalog.tcl       circuit catalog (register, adder, counter, decoder, selector)
-bin/schem             CLI front end (run/save/open/edit/validate/netlist/ir/emit)
-examples/             runnable schematics and generated Zig samples
-tests/                regression suites (engine, artifact, tools, logic, sequential, IR/backends)
+lib/parts.tcl         real parts: datasheet SPICE models + rated limits
+lib/ratings.tcl       design review (operating point vs absolute-max ratings)
+bin/schem             CLI front end (run/save/open/edit/gui/pcb/validate/netlist/ir/emit)
+bin/schem-gui         the Tk workbench launcher
+examples/             runnable schematics (incl. power_supply, ac_dc_supply)
+tests/                regression suites (engine, parts, GUI, PCB, zoom, bus, ...)
 LICENSE               MIT License (attribution required — keep the copyright notice)
 ```
 
