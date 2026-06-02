@@ -209,6 +209,19 @@ switch -- $cmd {
         exit 0
     }
 
+    gui {
+        # Launch the graphical drag-and-drop workbench (Tcl/Tk).
+        set guibin [file join $bindir schem-gui]
+        if {![file readable $guibin]} {
+            puts stderr "schem: gui launcher not found at $guibin" ; exit 1
+        }
+        # Launch under wish so Tk is available.
+        if {[catch {exec wish $guibin {*}$rest &} err]} {
+            puts stderr "schem: could not launch GUI (need Tk/wish): $err" ; exit 1
+        }
+        exit 0
+    }
+
     run {
         if {[llength $rest] != 1} { usage }
         set s [RunBuilder [lindex $rest 0]]
