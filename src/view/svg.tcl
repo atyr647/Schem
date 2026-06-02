@@ -249,6 +249,7 @@ proc ::schem::svgFile {s path args} {
     } else {
         set svg [::schem::svgGrouped $s -level $level {*}$pass]
     }
-    set fh [open $path w] ; puts $fh $svg ; close $fh
+    # UTF-8 regardless of locale: labels carry Ω/µ/° (the SVG header declares it).
+    set fh [open $path w] ; fconfigure $fh -encoding utf-8 ; puts $fh $svg ; close $fh
     return [string length $svg]
 }
