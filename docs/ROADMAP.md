@@ -56,25 +56,25 @@ interpreter · (future) WASM · C · HDL · ...
 
 | Layer | Status | Where |
 |-------|--------|-------|
-| Schematic object model (components, terminals, wires, junctions, buses, harnesses, layers, positions, ratings, state, hierarchy) | ✅ | `src/engine.tcl`, `src/hierarchy.tcl` |
-| Binary `.schem` project file (save / load) | ✅ | `src/format.tcl` |
-| Viewer — opens the schematic as a wired box diagram | ✅ | `src/render.tcl` |
-| Derived netlist / IR cache | ✅ | `src/netlist.tcl` |
-| Interpreter — Modified Nodal Analysis over the derived graph; obeys Ohm / Kirchhoff / continuity; relays, diodes, fuses, breakers, R/C/L; transient | ✅ | `src/simulate.tcl`, `src/transient.tcl`, `src/solver.tcl` |
-| Component → Circuit → Panel → Grid scale | ✅ | `src/hierarchy.tcl` |
-| Validator — anti-spaghetti rules (ground/source, isolated parts, floating terminals, terminal contracts, layers, board limits) + electrical faults | ✅ | `src/validate.tcl` |
-| Editor — interactive workbench authoring the object model (place / wire / param / solve / validate) reading & writing `.schem` | ✅ | `src/editor.tcl`, `bin/schem edit` |
+| Schematic object model (components, terminals, wires, junctions, buses, harnesses, layers, positions, ratings, state, hierarchy) | ✅ | `src/core/engine.tcl`, `src/core/hierarchy.tcl` |
+| Binary `.schem` project file (save / load) | ✅ | `src/io/format.tcl` |
+| Viewer — opens the schematic as a wired box diagram | ✅ | `src/view/render.tcl` |
+| Derived netlist / IR cache | ✅ | `src/io/netlist.tcl` |
+| Interpreter — Modified Nodal Analysis over the derived graph; obeys Ohm / Kirchhoff / continuity; relays, diodes, fuses, breakers, R/C/L; transient | ✅ | `src/core/simulate.tcl`, `src/core/transient.tcl`, `src/core/solver.tcl` |
+| Component → Circuit → Panel → Grid scale | ✅ | `src/core/hierarchy.tcl` |
+| Validator — anti-spaghetti rules (ground/source, isolated parts, floating terminals, terminal contracts, layers, board limits) + electrical faults | ✅ | `src/io/validate.tcl` |
+| Editor — interactive workbench authoring the object model (place / wire / param / solve / validate) reading & writing `.schem` | ✅ | `src/tui/editor.tcl`, `bin/schem edit` |
 | Relay standard-cell library — functionally-complete gates, XOR, half/full adder, seal-in latch; proves computational universality by truth table | ✅ | `lib/logic.tcl` |
-| Engine: sequential/bistable support — persistent relay state (latch memory), parallel-contact handling, short-by-current and oscillation detection | ✅ | `src/simulate.tcl` |
+| Engine: sequential/bistable support — persistent relay state (latch memory), parallel-contact handling, short-by-current and oscillation detection | ✅ | `src/core/simulate.tcl` |
 | Clocked sequential logic — gated D latch, rising-edge (master/slave) D flip-flop, toggle flip-flop and a 2-bit ripple counter; clocked in DC via persistent state and free-running in the transient analyser | ✅ | `lib/logic.tcl` |
-| Standard panel circuits — on/off-delay timers, one-shot, debounce, flasher, latching relay bank, safety interlock, plus a timed bench stimulus (`run -events`) | ✅ | `lib/standard.tcl`, `src/transient.tcl` |
-| Engine: device realism — battery internal resistance; relay hysteresis, propagation delay and an inductive coil (current ramp + kickback); wire resistance from AWG×length; capacitor ESR/leakage; inductor winding resistance; diode series resistance and reverse breakdown (Zener); fuse/breaker inverse time-current (I²t); a coupled-winding transformer; power & energy measurement | ✅ | `src/simulate.tcl`, `src/transient.tcl` |
-| Sparse network solver — stamps and factorises only the non-zero matrix entries (no dense `n²`/`n³`), so large panels/grids stay tractable; same MNA, same results | ✅ | `src/solver.tcl`, `src/simulate.tcl` |
+| Standard panel circuits — on/off-delay timers, one-shot, debounce, flasher, latching relay bank, safety interlock, plus a timed bench stimulus (`run -events`) | ✅ | `lib/standard.tcl`, `src/core/transient.tcl` |
+| Engine: device realism — battery internal resistance; relay hysteresis, propagation delay and an inductive coil (current ramp + kickback); wire resistance from AWG×length; capacitor ESR/leakage; inductor winding resistance; diode series resistance and reverse breakdown (Zener); fuse/breaker inverse time-current (I²t); a coupled-winding transformer; power & energy measurement | ✅ | `src/core/simulate.tcl`, `src/core/transient.tcl` |
+| Sparse network solver — stamps and factorises only the non-zero matrix entries (no dense `n²`/`n³`), so large panels/grids stay tractable; same MNA, same results | ✅ | `src/core/solver.tcl`, `src/core/simulate.tcl` |
 | Circuit catalog — reusable assemblies: register, n-bit adder, counter, decoder, selector (mux) | ✅ | `lib/catalog.tcl` |
 | Proven machines — an accumulator (stateful arithmetic), an instruction sequencer (one-hot control phases), a complete computing panel (a controlled multiplier that halts), and a grid of panels (the full Component→Circuit→Panel→Grid hierarchy) | ✅ | `lib/catalog.tcl`, `examples/` |
 
-| Circuit IR — a lowered, analysis-agnostic compile target: every element classified by electrical role with its derived quantities and control semantics, plus a node table, ports and analysis flags | ✅ | `src/compile.tcl` |
-| Backend interface — interchangeable emitters consuming the IR (`schem::emit`); a Zig backend (DC operating-point solver) and a Tcl `dcref` reference backend verified against the engine | ✅ | `src/backend.tcl` |
+| Circuit IR — a lowered, analysis-agnostic compile target: every element classified by electrical role with its derived quantities and control semantics, plus a node table, ports and analysis flags | ✅ | `src/io/compile.tcl` |
+| Backend interface — interchangeable emitters consuming the IR (`schem::emit`); a Zig backend (DC operating-point solver) and a Tcl `dcref` reference backend verified against the engine | ✅ | `src/backend/backend.tcl` |
 
 ## Next
 

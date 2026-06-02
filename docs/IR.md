@@ -19,9 +19,9 @@ schem emit zig FILE.schem    # emit a Zig DC solver
 
 ## Why a separate IR
 
-The `netlist` (`src/netlist.tcl`) already resolves continuity into shared
+The `netlist` (`src/io/netlist.tcl`) already resolves continuity into shared
 nodes and lists the elements with their node mappings — the *structural* view.
-The CIR (`src/compile.tcl`) goes one step further and **lowers** each element
+The CIR (`src/io/compile.tcl`) goes one step further and **lowers** each element
 to its electrical **role**, with the derived quantities and control semantics
 a code generator needs, so a backend dispatches on role instead of
 re-deriving device physics:

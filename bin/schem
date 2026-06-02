@@ -26,10 +26,13 @@ proc usage {} {
     puts stderr "       schem run     BUILDER.tcl"
     puts stderr "       schem save    BUILDER.tcl OUT.schem"
     puts stderr "       schem open    FILE.schem"
-    puts stderr "       schem edit    \[FILE.schem\]"
+    puts stderr "       schem image   FILE.schem OUT.svg ?-grouped?"
+    puts stderr "       schem edit    \[FILE.schem\]                    (terminal editor)"
+    puts stderr "       schem gui     \[FILE.schem\]                    (drag-and-drop workbench, needs Tk)"
     puts stderr "       schem validate FILE.schem"
     puts stderr "       schem netlist FILE.schem"
     puts stderr "       schem ir      FILE.schem            (the Circuit IR)"
+    puts stderr "       schem pcb     FILE.schem OUTBASE    (KiCad netlist + BOM for fab)"
     puts stderr "       schem emit    TARGET FILE.schem ?opts?   (TARGET: zig; opts: -digital ?-cycles N -events {..}? | -transient -duration T -dt DT)"
     exit 2
 }
@@ -122,6 +125,51 @@ switch -- $cmd {
         exit 0
     }
 
+    image - svg {
+        # schem image FILE.schem OUT.svg ?-grouped|-level N?
+        # Render the schematic to an SVG image (the box-and-arrow view, in the
+        # dark Code-panel style).  Semantic zoom selects the level of detail,
+        # clamped to the board's own depth (the language limits):
+        #   -level 0   the whole board in a few boxes (coarsest)
+        #   -level N   keep N+1 hierarchy tiers
+        #   -grouped   one level coarser than finest (bundles as ribbons)
+        #   (default)  finest -- every part
+        if {[llength $rest] < 2} { usage }
+        lassign $rest in outp
+        set s [schem::load $in]
+        set max [::schem::zoom::maxLevel $s]
+        set level $max
+        for {set i 2} {$i < [llength $rest]} {incr i} {
+            switch -- [lindex $rest $i] {
+                -grouped - -g { set level [expr {$max - 1}] }
+                -level - -l   { set level [lindex $rest [incr i]] }
+            }
+        }
+        set n [schem::svgFile $s $outp -level $level -title [file tail $in]]
+        set eff [::schem::zoom::clamp $s $level]
+        puts "wrote $outp ($n bytes, zoom $eff/$max=[::schem::zoom::levelName $eff $max])"
+        exit 0
+    }
+
+    pcb {
+        # schem pcb FILE.schem OUTBASE
+        # Export the files a board house needs: a KiCad netlist (OUTBASE.net)
+        # and a BOM (OUTBASE.csv).  Import the .net into KiCad's PCB editor to
+        # place, route and emit the Gerbers PCBWay manufactures from.
+        if {[llength $rest] != 2} { usage }
+        lassign $rest in base
+        set s [schem::load $in]
+        set res [::schem::pcb::export $s $base]
+        puts "wrote [dict get $res netlist] (KiCad netlist)"
+        puts "wrote [dict get $res bom] (bill of materials)"
+        set w [dict get $res warnings]
+        if {[llength $w]} {
+            puts "[llength $w] manufacturability note(s):"
+            foreach msg $w { puts "  ! $msg" }
+        }
+        exit 0
+    }
+
     netlist {
         if {[llength $rest] != 1} { usage }
         set s [schem::load [lindex $rest 0]]
@@ -159,6 +207,19 @@ switch -- $cmd {
             set ed [schem::EditorSession new]
         }
         EditLoop $ed
+        exit 0
+    }
+
+    gui {
+        # Launch the graphical drag-and-drop workbench (Tcl/Tk).
+        set guibin [file join $bindir schem-gui]
+        if {![file readable $guibin]} {
+            puts stderr "schem: gui launcher not found at $guibin" ; exit 1
+        }
+        # Launch under wish so Tk is available.
+        if {[catch {exec wish $guibin {*}$rest &} err]} {
+            puts stderr "schem: could not launch GUI (need Tk/wish): $err" ; exit 1
+        }
         exit 0
     }
 

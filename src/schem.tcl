@@ -9,23 +9,47 @@
 #   ...
 #   $s solve
 #
-# A Schem program *is* a schematic.  This file just wires the engine and
-# the transient analyser together and exposes a small convenience API.
+# A Schem program *is* a schematic.  This file wires the engine together from
+# its compartmentalised source tree and exposes a small convenience API.
+#
+# Source layout (each directory is one concern):
+#   core/    the engine        -- object model, solver, MNA, transient, AC,
+#                                  hierarchy, bus drafting
+#   io/      persistence/IR    -- .schem format, derived netlist, Circuit IR,
+#                                  validation
+#   backend/ IR backends       -- dispatch + zig / dcref / digital emitters
+#   view/    rendering          -- ASCII viewer, SVG, zoom, symbols (no Tk)
+#   export/  manufacturing      -- PCB (KiCad netlist + BOM)
+#   tui/     terminal editor
+#   gui/     the Tk workbench   (loaded only by bin/schem-gui, needs Tk)
 
 namespace eval ::schem {}
 
 set _dir [file dirname [info script]]
-source [file join $_dir engine.tcl]
-source [file join $_dir transient.tcl]
-source [file join $_dir hierarchy.tcl]
-source [file join $_dir netlist.tcl]
-source [file join $_dir compile.tcl]
-source [file join $_dir backend.tcl]
-source [file join $_dir format.tcl]
-source [file join $_dir render.tcl]
-source [file join $_dir validate.tcl]
-source [file join $_dir editor.tcl]
-unset _dir
+
+# Each entry is sourced in order; engine.tcl self-loads solver/simulate/ac.
+foreach _f {
+    core/engine.tcl
+    core/transient.tcl
+    core/hierarchy.tcl
+    core/bus.tcl
+    io/netlist.tcl
+    io/compile.tcl
+    backend/backend.tcl
+    backend/dcref.tcl
+    backend/zig.tcl
+    backend/digital.tcl
+    io/format.tcl
+    view/render.tcl
+    view/zoom.tcl
+    view/svg.tcl
+    export/pcb.tcl
+    io/validate.tcl
+    tui/editor.tcl
+} {
+    source [file join $_dir $_f]
+}
+unset _dir _f
 
 # schem::new -- create a fresh schematic (board).
 proc ::schem::new {{name schematic}} {

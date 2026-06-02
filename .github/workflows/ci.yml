@@ -1,0 +1,47 @@
+name: CI
+
+# Run the regression suite on every push and pull request.  Schem is pure
+# Tcl/Tk, so CI just installs the runtime and runs `make test`.  The GUI and
+# symbol suites need Tk + a display, so we run them under Xvfb; the Zig
+# backend cross-checks run when a zig compiler is available.
+
+on:
+  push:
+    branches: [ main, master, "claude/**" ]
+  pull_request:
+
+jobs:
+  test:
+    name: Test (Tcl/Tk + Zig backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tcl/Tk and Xvfb
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tcl tk xvfb
+
+      - name: Install Zig 0.13.0 (for the compiled-backend cross-checks)
+        run: |
+          curl -sL -o zig.tar.xz https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz
+          tar xf zig.tar.xz
+          echo "SCHEM_ZIG=$PWD/zig-linux-x86_64-0.13.0/zig" >> "$GITHUB_ENV"
+
+      - name: Run the full suite (under a virtual display)
+        run: xvfb-run -a make test
+
+      - name: Lint (whitespace / tabs)
+        run: make lint
+
+  test-macos:
+    name: Test (macOS, engine only)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tcl/Tk
+        run: brew install tcl-tk
+      - name: Run the headless engine suites
+        run: |
+          export PATH="$(brew --prefix tcl-tk)/bin:$PATH"
+          make test-engine

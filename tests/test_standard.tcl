@@ -13,7 +13,7 @@ namespace import ::tcltest::*
 
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib standard.tcl]
+source [file join $here .. lib logic standard.tcl]
 
 # rig -- supply rails + one instantiated standard cell.
 proc rig {builder args} {

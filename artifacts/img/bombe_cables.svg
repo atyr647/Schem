@@ -1,0 +1,236 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<svg xmlns='http://www.w3.org/2000/svg' width='1476' height='672' viewBox='0 0 1476 672' font-family='DejaVu Sans Mono, monospace'>
+<rect x='0' y='0' width='1476' height='672' rx='22' fill='#1c1c1c'/>
+<rect x='10' y='10' width='1456' height='652' rx='16' fill='#242424'/>
+<text x='34' y='44' fill='#8a8a8a' font-size='22'>bombe_QER.schem</text>
+<path d='M 1384 32 l 8 9 l 14 -16' stroke='#8a8a8a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+<path d='M 1424 26 h 14 v 14 M 1438 26 l -20 20' stroke='#8a8a8a' stroke-width='2.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+<line x1='22' y1='56' x2='1454' y2='56' stroke='#2a2a2a' stroke-width='1.5'/>
+<defs><marker id='arrow' markerWidth='10' markerHeight='10' refX='8' refY='3' orient='auto' markerUnits='userSpaceOnUse'><path d='M0,0 L8,3 L0,6 Z' fill='#9a9a9a'/></marker></defs>
+<path d='M 353 136 C 353 136 123 136 123 136' stroke='#9a9a9a' stroke-width='1.5' fill='none' opacity='0.55'/>
+<path d='M 1043 396 C 1043 396 353 396 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 331 353 331 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 396 C 583 266 1043 266 1043 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 396 C 583 331 353 331 353 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 201 1043 201 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 461 123 461 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 396 C 813 331 813 331 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 201 813 201 813 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 331 123 331 123 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 396 123 396 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 266 1273 266 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 331 583 331 583 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 396 C 353 266 1273 266 1273 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 136 813 136 813 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 266 813 266 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 331 123 331 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 136 1043 136 1043 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 136 1273 136 1273 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 201 123 201 123 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 201 353 201 353 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 201 583 201 583 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 201 813 201 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 201 1043 201 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 201 1273 201 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 266 123 266 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 266 353 266 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 266 583 266 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 266 813 266 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 266 1043 266 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 266 1273 266 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 331 123 331 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 136 C 583 331 353 331 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 136 1043 136 1043 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 136 1273 136 1273 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 201 123 201 123 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 201 353 201 353 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 201 583 201 583 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 201 813 201 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 201 1043 201 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 266 123 266 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 266 353 266 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 266 583 266 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 266 813 266 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 266 1043 266 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 266 1273 266 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 331 123 331 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 136 C 813 331 353 331 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 136 1273 136 1273 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 201 123 201 123 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 201 353 201 353 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 201 583 201 583 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 201 813 201 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 201 1043 201 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 201 1273 201 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 266 123 266 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 266 353 266 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 266 813 266 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 266 1043 266 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 266 1273 266 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 331 123 331 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 136 C 1043 331 353 331 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 201 123 201 123 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 201 353 201 353 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 201 583 201 583 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 201 813 201 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 201 1273 201 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 266 123 266 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 266 583 266 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 266 813 266 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 266 1043 266 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 266 353 266 353 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 266 583 266 583 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 266 813 266 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 266 1043 266 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 266 1273 266 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 331 353 331 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 331 583 331 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 331 813 331 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 331 1043 331 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 331 1273 331 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 396 123 396 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 266 C 123 396 353 396 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 266 583 266 583 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 266 1043 266 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 266 1273 266 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 331 123 331 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 331 353 331 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 331 813 331 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 331 1043 331 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 331 1273 331 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 396 123 396 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 266 C 353 396 353 396 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 266 813 266 813 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 266 1043 266 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 266 1273 266 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 331 353 331 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 331 583 331 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 331 813 331 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 331 1043 331 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 331 1273 331 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 266 C 583 396 353 396 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 266 1043 266 1043 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 266 1273 266 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 331 123 331 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 331 353 331 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 331 583 331 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 331 1043 331 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 331 1273 331 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 396 123 396 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 266 C 813 396 353 396 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 266 1273 266 1273 266' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 331 123 331 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 331 353 331 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 331 583 331 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 331 813 331 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 331 1043 331 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 331 1273 331 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 396 123 396 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 266 C 1043 396 353 396 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 331 123 331 123 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 331 353 331 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 331 583 331 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 331 813 331 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 331 1043 331 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 331 1273 331 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 396 123 396 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 266 C 1273 396 353 396 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 396 353 396 353 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 396 583 396 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 396 813 396 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 396 1043 396 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 396 1273 396 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 396 C 123 461 353 461 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 396 C 353 396 583 396 583 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 396 C 353 396 813 396 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 396 C 353 396 1273 396 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 396 C 353 461 123 461 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 396 C 353 461 353 461 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 396 C 583 396 813 396 813 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 396 C 583 396 1043 396 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 396 C 583 396 1273 396 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 396 C 583 461 123 461 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 396 C 583 461 353 461 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 396 C 813 396 1043 396 1043 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 396 C 813 396 1273 396 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 396 C 813 461 123 461 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 813 396 C 813 461 353 461 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 396 C 1043 396 1273 396 1273 396' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 396 C 1043 461 123 461 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 396 C 1043 461 353 461 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 396 C 1273 461 123 461 123 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 396 C 1273 461 353 461 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 123 526 C 123 526 353 526 353 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 331 583 331 583 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 583 526 C 583 331 123 331 123 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 353 136 C 353 331 813 331 813 526' stroke='#9a9a9a' stroke-width='1.5' fill='none' opacity='0.55'/>
+<path d='M 813 526 C 813 331 1273 331 1273 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1273 136 C 1273 331 1043 331 1043 526' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<path d='M 1043 526 C 1043 331 123 331 123 136' stroke='#9a9a9a' stroke-width='4' fill='none' opacity='0.55'/>
+<rect x='48' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='62' y='143' font-size='18'><tspan fill='#d4d4d4'>GND</tspan><tspan fill='#8a8a8a'>:ground</tspan></text>
+<rect x='278' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='292' y='143' font-size='18'><tspan fill='#d4d4d4'>PWR</tspan><tspan fill='#8a8a8a'>:battery</tspan></text>
+<rect x='508' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='513' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='522' y='143' font-size='18'><tspan fill='#d4d4d4'>CAB_A[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='738' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='743' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='752' y='143' font-size='18'><tspan fill='#d4d4d4'>CAB_C[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='968' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='973' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='982' y='143' font-size='18'><tspan fill='#d4d4d4'>CAB_D[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='1198' y='104' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='1203' y='109' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='1212' y='143' font-size='18'><tspan fill='#d4d4d4'>CAB_E[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='53' y='239' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='62' y='273' font-size='18'><tspan fill='#d4d4d4'>CAB_F[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='283' y='239' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='292' y='273' font-size='18'><tspan fill='#d4d4d4'>CAB_G[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='513' y='239' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='522' y='273' font-size='18'><tspan fill='#d4d4d4'>CAB_H[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='738' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='743' y='239' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='752' y='273' font-size='18'><tspan fill='#d4d4d4'>CAB_K[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='968' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='973' y='239' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='982' y='273' font-size='18'><tspan fill='#d4d4d4'>CAB_N[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='1198' y='234' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='1203' y='239' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='1212' y='273' font-size='18'><tspan fill='#d4d4d4'>CAB_O[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='53' y='369' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='62' y='403' font-size='18'><tspan fill='#d4d4d4'>CAB_R[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='283' y='369' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='292' y='403' font-size='18'><tspan fill='#d4d4d4'>CAB_S[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='513' y='369' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='522' y='403' font-size='18'><tspan fill='#d4d4d4'>CAB_T[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='738' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='743' y='369' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='752' y='403' font-size='18'><tspan fill='#d4d4d4'>CAB_V[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='968' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='973' y='369' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='982' y='403' font-size='18'><tspan fill='#d4d4d4'>CAB_W[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='1198' y='364' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='1203' y='369' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='1212' y='403' font-size='18'><tspan fill='#d4d4d4'>CAB_X[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='48' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='53' y='499' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='62' y='533' font-size='18'><tspan fill='#d4d4d4'>CAB_Y[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='278' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='283' y='499' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='292' y='533' font-size='18'><tspan fill='#d4d4d4'>CAB_Z[26]</tspan><tspan fill='#8a8a8a'>:bus</tspan></text>
+<rect x='508' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='513' y='499' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='522' y='533' font-size='18'><tspan fill='#d4d4d4'>PD[26]</tspan><tspan fill='#8a8a8a'>:resistor</tspan></text>
+<rect x='738' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<text x='752' y='533' font-size='18'><tspan fill='#d4d4d4'>RIN</tspan><tspan fill='#8a8a8a'>:resistor</tspan></text>
+<rect x='968' y='494' width='150' height='64' rx='6' fill='#242424' stroke='#9a9a9a' stroke-width='2'/>
+<rect x='973' y='499' width='140' height='54' rx='4' fill='none' stroke='#8a8a8a' stroke-width='1'/>
+<text x='982' y='533' font-size='18'><tspan fill='#d4d4d4'>L_T[26]</tspan><tspan fill='#8a8a8a'>:lamp</tspan></text>
+</svg>

@@ -15,7 +15,7 @@ namespace import ::tcltest::*
 
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib logic.tcl]
+source [file join $here .. lib logic logic.tcl]
 
 proc hi {s term} { return [expr {[$s probe $term] > 6 ? 1 : 0}] }
 

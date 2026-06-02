@@ -1,0 +1,33 @@
+#!/usr/bin/env wish
+# schem-gui -- launch the Schem visual workbench (Tcl/Tk).
+#
+#   schem-gui [FILE.schem]
+#
+# A drag-and-drop schematic editor: build circuits from real parts with
+# datasheet specs, simulate them, review them against ratings, and export to
+# KiCad + BOM for manufacture.  The schematic is the program.
+
+# Our catalog strings use real units (Ω, µ) encoded UTF-8.  Force UTF-8 BEFORE
+# sourcing any library so those literals decode correctly even when the system
+# locale is legacy (iso8859-1).
+catch {encoding system utf-8}
+
+set bindir [file dirname [file normalize [info script]]]
+set root [file dirname $bindir]
+source [file join $root src schem.tcl]
+source [file join $root lib parts parts.tcl]
+source [file join $root lib parts ratings.tcl]
+source [file join $root src gui load.tcl]
+
+set initial ""
+if {$argc >= 1} { set initial [lindex $argv 0] }
+
+if {$initial ne "" && [file exists $initial]} {
+    set s [schem::load $initial]
+    set app [::schem::gui::App new $s]
+    $app do command redraw
+} else {
+    set app [::schem::gui::App new]
+}
+
+# keep running

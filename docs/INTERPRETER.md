@@ -33,7 +33,7 @@ generate effects*) using **Modified Nodal Analysis (MNA)**:
    source-branch rows *are* Kirchhoff's voltage law.
 
 3. **Solve.** The system is solved by Gaussian elimination with partial
-   pivoting (`src/solver.tcl`).  A circuit matrix is **sparse** — each part
+   pivoting (`src/core/solver.tcl`).  A circuit matrix is **sparse** — each part
    touches only a few nodes — so the engine stores just the non-zero entries
    (an array keyed `row,col`) and eliminates only the rows that actually
    couple to each pivot, via a cross-linked column index (`solve_sparse`).

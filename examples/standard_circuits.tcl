@@ -10,7 +10,7 @@
 
 set here [file dirname [file normalize [info script]]]
 source [file join $here .. src schem.tcl]
-source [file join $here .. lib standard.tcl]
+source [file join $here .. lib logic standard.tcl]
 
 proc rig {builder args} {
     set s [schem::new demo]

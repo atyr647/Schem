@@ -61,15 +61,29 @@ breakers). Capacitors and inductors are time-stepped with companion models.
 
 ## Requirements
 
-A Tcl interpreter (Tcl 8.6+, which ships with TclOO):
+A Tcl interpreter (**Tcl 8.6+**, which ships with TclOO). The visual workbench
+additionally needs **Tk**:
 
 ```sh
-sudo apt-get install tcl        # Debian/Ubuntu
+sudo apt-get install tcl tk     # Debian/Ubuntu  (tk pulls in the GUI deps)
+sudo dnf install tcl tk         # Fedora/RHEL
 brew install tcl-tk             # macOS
 ```
 
-No other runtime dependencies. The optional Zig backend requires Zig 0.13.0
-(see below).
+On **Windows**, install Tcl/Tk via the
+[Magicsplat installer](https://www.magicsplat.com/tcl-installer/) and run
+`tclsh bin\schem …` / `wish bin\schem-gui`.
+
+No other runtime dependencies. The optional "compile to Zig" backend requires
+Zig 0.13.0. **Full per-platform install instructions (Windows, macOS, Linux,
+the GUI, the Zig backend, troubleshooting) are in
+[docs/INSTALL.md](docs/INSTALL.md).**
+
+Verify your install:
+
+```sh
+make test          # runs the full regression suite
+```
 
 ## Quick start
 
@@ -110,6 +124,33 @@ $s solve
 puts "Vout = [$s probe R1.b] V"     ;# -> 6.0
 puts "I    = [$s current R1] A"     ;# -> 0.003
 ```
+
+## The visual workbench (GUI)
+
+A drag-and-drop schematic editor in pure Tcl/Tk:
+
+```sh
+$ schem gui                  # blank board
+$ schem gui board.schem      # open an existing board
+```
+
+Place parts from a catalog (raw elements *and* real devices grouped by job --
+rectifier, smoothing, transistor, ...), wire pin-to-pin, **Solve** for the DC
+operating point, probe nodes, and run a **Design review** that checks every
+real part against its datasheet ratings -- over-limit parts turn red on the
+schematic.  Symbols draw in ANSI/IEEE 315 or IEC 60617 (toggle with `T`).
+Export an SVG drawing, or a **KiCad netlist + BOM** for the board house.
+Requires Tk (`apt-get install tk`).  See `docs/GUI.md`.
+
+## Real parts & ratings
+
+Design with actual devices that have datasheet specs and limits, not anonymous
+primitives -- a 1N4007 (1000 V, 1 A) vs a 1N5819 Schottky (40 V, low drop).
+Each part carries the manufacturer's SPICE model (so it simulates like the real
+thing) and its absolute-max ratings (so the review catches a part pushed past
+them).  Power-supply parts first: rectifiers, smoothing caps, regulators,
+power MOSFETs.  See `docs/PARTS.md`; a worked AC-DC supply is in
+`examples/ac_dc_supply.tcl`.
 
 ## Zig backend (optional)
 
@@ -238,35 +279,60 @@ above); they skip cleanly when no toolchain is present.
 
 ## Repository layout
 
+Each directory is one concern; see [CONTRIBUTING.md](CONTRIBUTING.md) for the
+full map.
+
 ```
-docs/LANGUAGE.md      the language definition (the manifesto / spec)
-docs/ROADMAP.md       architecture: source object model, derived netlist
-docs/FORMAT.md        the binary .schem project file
-docs/INTERPRETER.md   engine internals + full API reference
-docs/IR.md            Circuit IR + interchangeable backends (Zig, dcref, digref, digseq)
-src/schem.tcl         package entry point
-src/solver.tcl        dense linear solver (Gaussian elimination)
-src/engine.tcl        schematic object model + component metadata
-src/simulate.tcl      nodal analysis, Newton + fixed-point solve, tools
-src/transient.tcl     time-domain analysis (capacitors / inductors)
-src/hierarchy.tcl     Component → Circuit → Panel → Grid
-src/format.tcl        binary .schem save / load
-src/netlist.tcl       derived netlist / IR (build cache)
-src/compile.tcl       the Circuit IR (lowered, backend-agnostic compile target)
-src/backend.tcl       interchangeable backends over the IR (zig, dcref, digref, digseq)
-src/render.tcl        the viewer (draws the schematic as a wired diagram)
-src/validate.tcl      anti-spaghetti + electrical validation
-src/editor.tcl        the interactive workbench (EditorSession)
-lib/logic.tcl         relay standard-cell library (gates, adder, latch)
-lib/standard.tcl      standard panel circuits (timers, one-shot, debounce, ...)
-lib/catalog.tcl       circuit catalog (register, adder, counter, decoder, selector)
-bin/schem             CLI front end (run/save/open/edit/validate/netlist/ir/emit)
-examples/             runnable schematics and generated Zig samples
-tests/                regression suites (engine, artifact, tools, logic, sequential, IR/backends)
-LICENSE               MIT License (attribution required — keep the copyright notice)
+bin/                CLI launcher (schem) + Tk launcher (schem-gui)
+src/
+  schem.tcl         entry point — sources the engine tree in order
+  core/             the engine: engine, solver, simulate (MNA), transient,
+                    ac, hierarchy, bus
+  io/               persistence + derived forms: format (.schem), netlist,
+                    compile (Circuit IR), validate
+  backend/          IR backends: backend (dispatch), zig, dcref, digital
+  view/             rendering (no Tk): render, svg, zoom, symbols, ksym
+  export/           pcb (KiCad netlist + BOM)
+  gui/              the Tk workbench: load, app, menu, partsbin, canvas,
+                    inspector, analysis, commands
+  tui/              editor (terminal workbench core)
+lib/
+  logic/            relay logic, standard circuits, circuit catalog
+  parts/            real parts (SPICE models) + ratings (design review)
+  crypto/           the worked machine: enigma + bombe
+  symbols/          vendored KiCad schematic symbols
+docs/               one markdown file per subsystem (+ INSTALL, ASSESSMENT)
+examples/           runnable schematics (power_supply, ac_dc_supply, ...)
+tests/              one test_<area>.tcl per subsystem + run.tcl (the runner)
+Makefile            make test / test-engine / gui / examples / lint / clean
 ```
+
+## Documentation
+
+| Topic | Doc |
+|-------|-----|
+| Install (Windows/macOS/Linux, GUI, Zig) | [docs/INSTALL.md](docs/INSTALL.md) |
+| Language definition | [docs/LANGUAGE.md](docs/LANGUAGE.md) |
+| The visual workbench | [docs/GUI.md](docs/GUI.md) |
+| GUI screenshots (every screen) | [docs/screenshots/](docs/screenshots/) |
+| Real parts & ratings | [docs/PARTS.md](docs/PARTS.md) |
+| PCB export & images | [docs/IR.md](docs/IR.md), [docs/IMAGE.md](docs/IMAGE.md) |
+| Buses / zoom / I-O parts | [docs/BUS.md](docs/BUS.md), [docs/ZOOM.md](docs/ZOOM.md), [docs/IO.md](docs/IO.md) |
+| Worked machine (Enigma/Bombe) | [docs/BOMBE.md](docs/BOMBE.md) |
+| Correctness assessment | [docs/ASSESSMENT.md](docs/ASSESSMENT.md) |
+| Maintenance / health plan | [docs/MAINTENANCE.md](docs/MAINTENANCE.md) |
+
+## Contributing
+
+Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the codebase
+layout, conventions, and how to add a component, a real part, or a backend.
+`make test` must stay green and engine changes need a hand-verified value.
 
 ## License
 
 [MIT License](LICENSE) — use it for anything, but keep the copyright notice.
 Copyright © 2026 Adam Tyrone.
+
+The vendored schematic symbols in `lib/symbols/standard.kicad_lib` are from the
+[KiCad symbol library](https://gitlab.com/kicad/libraries/kicad-symbols)
+(CC-BY-SA 4.0 with the library exception).
