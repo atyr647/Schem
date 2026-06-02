@@ -152,7 +152,14 @@ oo::class create ::schem::gui::App {
             validate-text  { my SyncPositions ; return [$S validateText] }
             netlist-text   { my SyncPositions ; return [$S netlistText] }
             run-transient  { return [$S run -duration [lindex $args 0] -dt [lindex $args 1] -record [lrange $args 2 end]] }
+            ac-mag         {
+                # ac-mag NODE FREQ -> magnitude (linear) at one frequency
+                set sw [$S acsweep [list [lindex $args 1]]]
+                return [$S acmag [$S acnode $sw [lindex $args 1] [lindex $args 0]]]
+            }
             fit            { my CmdFitAll }
+            dblclick       { my OnDoubleClick {*}$args }
+            stateof        { return [expr {![catch {$S get [lindex $args 0] state} v] ? $v : ""}] }
             verdict        { return [expr {[dict exists $Placed [lindex $args 0] verdict] ? [dict get $Placed [lindex $args 0] verdict] : "ok"}] }
             redraw         { my Redraw }
             default        { return -code error "unknown do action: $action" }
@@ -241,6 +248,7 @@ oo::class create ::schem::gui::App {
         $m add cascade -label Simulate -menu $sm
         $sm add command -label "Solve (DC operating point)" -accelerator F5 -command [my callback Cmd solve]
         $sm add command -label "Transient analysis…"        -command [my callback Cmd transient]
+        $sm add command -label "AC frequency sweep…"        -command [my callback Cmd acsweep]
         $sm add separator
         $sm add command -label "Design-rule check…"         -command [my callback Cmd validate]
         $sm add command -label "Clear results"              -command [my callback Cmd clearresults]
@@ -502,6 +510,7 @@ oo::class create ::schem::gui::App {
         grid columnconfigure $f 0 -weight 1
         # interaction bindings
         bind $Canvas <Button-1>        [my callback OnClick %x %y]
+        bind $Canvas <Double-Button-1> [my callback OnDoubleClick %x %y]
         bind $Canvas <B1-Motion>       [my callback OnDrag %x %y]
         bind $Canvas <ButtonRelease-1> [my callback OnRelease %x %y]
         bind $Canvas <Motion>          [my callback OnHover %x %y]
@@ -941,8 +950,9 @@ oo::class create ::schem::gui::App {
         set partid [dict get $pl partid]
         set val [my ValueText $name]
         set color [my ComponentColor $name]
+        set state [expr {![catch {$S get $name state} st] ? $st : ""}]
         set sym [::schem::sym::draw $Canvas $type $x $y -scale [expr {1.2*$Zoom}] -standard $Std \
-            -rot $rot -tags [list comp comp_$name] -color $color -label $name -value $val]
+            -rot $rot -tags [list comp comp_$name] -color $color -label $name -value $val -state $state]
         # pin dots + record absolute positions
         set abspins [dict create]
         dict for {pin off} [dict get $sym pins] {
@@ -1080,6 +1090,29 @@ oo::class create ::schem::gui::App {
         if {$hit ne ""} { my SetStatus "Selected $hit" } else { my SetStatus "Ready" }
     }
 
+    # OnDoubleClick -- toggle an operable part (switch, button, breaker, fuse
+    # reset) so you can flip contacts and re-solve, like operating the board.
+    method OnDoubleClick {x y} {
+        set hit [my ComponentAt [my SnapW $x] [my SnapW $y]]
+        if {$hit eq ""} return
+        set t [$S typeof $hit]
+        switch -- $t {
+            switch  { my ToggleState $hit state open closed }
+            button  { my ToggleState $hit state released pressed }
+            breaker { catch {$S reset $hit} ; my SetStatus "$hit reset (closed)" }
+            default { my SetStatus "double-click a switch, button or breaker to operate it" ; return }
+        }
+        set Sel $hit ; set Result none
+        my Redraw ; my ShowInspector
+    }
+    method ToggleState {name key a b} {
+        set cur [expr {![catch {$S get $name $key} v] ? $v : $a}]
+        set new [expr {$cur eq $a ? $b : $a}]
+        $S set $name $key $new
+        set Dirty 1
+        my SetStatus "$name -> $new  (double-click to toggle; Solve to update)"
+    }
+
     # ComponentAt -- nearest component to a WORLD-coordinate point.
     method ComponentAt {x y} {
         set best "" ; set bestd 1e9
@@ -1135,10 +1168,23 @@ oo::class create ::schem::gui::App {
 
     method ProbeAt {x y} {
         if {$Result ne "solved"} { my SetStatus "Solve first (F5), then probe." ; return }
+        # near a pin -> node voltage; over a component body -> branch current + power
         set pin [my NearestPin $x $y]
-        if {$pin eq ""} { return }
-        if {[catch {$S probe $pin} v]} { my SetStatus "no node at $pin" ; return }
-        my SetStatus "Probe $pin = [format %.4g $v] V" "$pin = [format %.4g $v] V"
+        if {$pin ne ""} {
+            if {[catch {$S probe $pin} v]} { my SetStatus "no node at $pin" ; return }
+            my SetStatus "$pin = [format %.4g $v] V" "[format %.4g $v] V"
+            return
+        }
+        set comp [my ComponentAt [my SnapW $x] [my SnapW $y]]
+        if {$comp eq ""} { my SetStatus "Click a pin (voltage) or a part (current)." ; return }
+        set msg "$comp" ; set right ""
+        if {![catch {$S current $comp} i]} {
+            append msg "  I = [format %.4g $i] A" ; set right "[format %.3g $i] A"
+        }
+        if {![catch {$S power $comp} p] && $p ne ""} {
+            append msg "   P = [format %.4g $p] W"
+        }
+        my SetStatus $msg $right
     }
 
     method HoverPin {name pin} {
@@ -1222,7 +1268,36 @@ oo::class create ::schem::gui::App {
                 incr i
             }
         }
+        # measured operating point (after a solve): voltage across, current,
+        # power -- the numbers an engineer reads off the part.
+        if {$Result eq "solved"} { my ShowMeasured }
         if {[dict exists $pl ratings]} { my ShowRatings [dict get $pl ratings] }
+    }
+
+    # ShowMeasured -- the selected part's solved operating point.
+    method ShowMeasured {} {
+        variable ::schem::gui::T
+        set rows {}
+        set terms [$S terminals $Sel]
+        if {[llength $terms] == 2} {
+            if {![catch {expr {[$S probe $Sel.[lindex $terms 0]]-[$S probe $Sel.[lindex $terms 1]]}} dv]} {
+                lappend rows V [format "%.4g V" $dv]
+            }
+        }
+        if {![catch {$S current $Sel} i]} { lappend rows I [format "%.4g A" $i] }
+        if {![catch {$S power $Sel} p] && $p ne ""} { lappend rows P [format "%.4g W" $p] }
+        if {[llength $rows] == 0} return
+        my InspSection $Insp.ms "Measured"
+        set i 0
+        foreach {k v} $rows {
+            set row [frame $Insp.m$i -bg $T(surface)]
+            pack $row -fill x -anchor w -pady 1
+            label $row.k -text $k -bg $T(surface) -fg $T(dim) -width 7 -anchor w -font $::schem::gui::FONTSM
+            pack $row.k -side left
+            label $row.v -text $v -bg $T(surface) -fg $T(accent) -anchor w -font $::schem::gui::FONTMONO
+            pack $row.v -side left
+            incr i
+        }
     }
 
     # InspSection -- a small section header with a hairline rule.
@@ -1307,6 +1382,7 @@ oo::class create ::schem::gui::App {
             fit        { my Redraw }
             solve      { my CmdSolve }
             transient  { my CmdTransient }
+            acsweep    { my CmdAcSweep }
             clearresults { set Result none ; my Redraw ; my SetStatus "results cleared" }
             review     { my CmdReview }
             validate   { my CmdValidate }
@@ -1585,6 +1661,152 @@ oo::class create ::schem::gui::App {
         }
     }
 
+    # ----- AC frequency sweep (Bode) ---------------------------------------
+    method CmdAcSweep {} {
+        if {[dict size $Placed] == 0} { my SetStatus "Nothing to sweep." ; return }
+        my SyncPositions
+        # an AC sweep drives a battery as the small-signal source; need one
+        if {[llength [lmap n [$S components] {expr {[$S typeof $n] eq "battery" ? $n : [continue]}}]] == 0} {
+            my SetStatus "AC sweep needs a battery as the source." ; return
+        }
+        my AcSweepDialog
+    }
+
+    method AcSweepDialog {} {
+        variable ::schem::gui::T
+        set w .ac[incr ::schem::gui::_wincount]
+        toplevel $w -bg $T(surface)
+        wm title $w "AC frequency sweep"
+        catch {wm geometry $w 760x540}
+        set ctl [frame $w.ctl -bg $T(surface)]
+        pack $ctl -side top -fill x -padx 12 -pady 10
+        # from / to (decades), points/decade, output node
+        foreach {lbl var def wd} {"From (Hz)" f0 1 8  "To (Hz)" f1 1e6 8  "Pts/dec" ppd 20 5} {
+            label $ctl.l$var -text $lbl -bg $T(surface) -fg $T(dim) -font $::schem::gui::FONTSM
+            pack $ctl.l$var -side left
+            entry $ctl.e$var -bg $T(raised) -fg $T(ink) -width $wd -relief flat \
+                -insertbackground $T(accent) -font $::schem::gui::FONTMONO
+            $ctl.e$var insert 0 $def ; pack $ctl.e$var -side left -padx {4 12}
+        }
+        label $ctl.nl -text "Output" -bg $T(surface) -fg $T(dim) -font $::schem::gui::FONTSM
+        pack $ctl.nl -side left
+        set terms {}
+        foreach n [$S components] {
+            if {[$S typeof $n] in {ground bus junction battery}} continue
+            foreach t [$S terminals $n] { lappend terms $n.$t }
+        }
+        # also offer the source terminals, but after the signal nodes
+        foreach n [$S components] {
+            if {[$S typeof $n] ne "battery"} continue
+            foreach t [$S terminals $n] { lappend terms $n.$t }
+        }
+        set nodevar ::schem::gui::_acnode$::schem::gui::_wincount
+        set $nodevar [lindex $terms 0]
+        set mb [menubutton $ctl.nb -textvariable $nodevar -bg $T(raised) -fg $T(ink) \
+            -relief flat -padx 8 -pady 2 -font $::schem::gui::FONTMONO -direction below -indicatoron 0]
+        pack $mb -side left -padx 4
+        set nm [menu $mb.m -tearoff 0 -bg $T(raised) -fg $T(ink) -activebackground $T(accent2)]
+        $mb configure -menu $nm
+        foreach t $terms { $nm add command -label $t -command [list set $nodevar $t] }
+        set plot [canvas $w.plot -bg $T(sunken) -highlightthickness 0]
+        pack $plot -side top -fill both -expand 1 -padx 12 -pady {0 8}
+        set bb [frame $w.bb -bg $T(surface)]
+        pack $bb -side bottom -fill x -padx 12 -pady 10
+        button $bb.run -text "Sweep ▶" -relief flat -padx 16 -pady 5 \
+            -bg $T(accent2) -fg white -activebackground $T(accent) \
+            -command [my callback RunAcSweep $ctl.ef0 $ctl.ef1 $ctl.eppd $nodevar $plot]
+        pack $bb.run -side left
+        button $bb.close -text "Close" -command [list destroy $w] \
+            -bg $T(raised) -fg $T(ink) -activebackground $T(hover) -relief flat -padx 14 -pady 5
+        pack $bb.close -side right
+        after 60 [my callback RunAcSweep $ctl.ef0 $ctl.ef1 $ctl.eppd $nodevar $plot]
+    }
+
+    method RunAcSweep {ef0 ef1 eppd nodevar plot} {
+        variable ::schem::gui::T
+        if {![winfo exists $plot]} return
+        set f0 [$ef0 get] ; set f1 [$ef1 get] ; set ppd [$eppd get] ; set node [set $nodevar]
+        if {![string is double -strict $f0] || ![string is double -strict $f1] || $f0 <= 0 || $f1 <= $f0} {
+            my SetStatus "AC sweep: bad frequency range" ; return
+        }
+        # build a log-spaced frequency list
+        set decades [expr {log10($f1/$f0)}]
+        set npts [expr {int($decades*$ppd)+1}]
+        if {$npts < 2} { set npts 2 } ; if {$npts > 600} { set npts 600 }
+        set freqs {}
+        for {set i 0} {$i < $npts} {incr i} {
+            lappend freqs [expr {$f0*pow(10.0,$decades*$i/($npts-1))}]
+        }
+        if {[catch {$S acsweep $freqs} sw]} { my SetStatus "AC sweep error: $sw" ; return }
+        # magnitude (acmag already returns dB) and phase (deg) at the output node
+        set mags {} ; set phs {}
+        foreach f $freqs {
+            set ph [$S acnode $sw $f $node]
+            lappend mags [$S acmag $ph]
+            lappend phs [$S acphase $ph]
+        }
+        my PlotBode $plot $freqs $mags $phs $node
+        my SetStatus "AC sweep: |$node| over $f0–$f1 Hz" "OK"
+    }
+
+    # PlotBode -- magnitude (dB, top) + phase (deg, bottom) vs log frequency.
+    method PlotBode {c freqs mags phs label} {
+        variable ::schem::gui::T
+        $c delete all
+        update idletasks
+        set W [winfo width $c] ; set H [winfo height $c]
+        if {$W < 50} { set W 700 } ; if {$H < 50} { set H 380 }
+        set ml 54 ; set mr 16 ; set mt 16 ; set mb 30 ; set gap 24
+        set ph0 [expr {($H-$mt-$mb-$gap)*0.62}]   ;# magnitude pane height
+        set ph1 [expr {($H-$mt-$mb-$gap)-$ph0}]   ;# phase pane height
+        set f0 [lindex $freqs 0] ; set f1 [lindex $freqs end]
+        set lf0 [expr {log10($f0)}] ; set lf1 [expr {log10($f1)}]
+        if {$lf1 <= $lf0} { set lf1 [expr {$lf0+1}] }
+        set xpix {{f} { upvar 1 ml ml W W mr mr lf0 lf0 lf1 lf1 ; expr {$ml+(log10($f)-$lf0)/($lf1-$lf0)*($W-$ml-$mr)} }}
+        # magnitude pane
+        set m0 [lindex [lsort -real $mags] 0] ; set m1 [lindex [lsort -real $mags] end]
+        if {$m1-$m0 < 1} { set m0 [expr {$m0-1}] ; set m1 [expr {$m1+1}] }
+        set pad [expr {($m1-$m0)*0.1}] ; set m0 [expr {$m0-$pad}] ; set m1 [expr {$m1+$pad}]
+        set ytop $mt ; set ybot [expr {$mt+$ph0}]
+        set ymag {{v} { upvar 1 ytop ytop ybot ybot m0 m0 m1 m1 ; expr {$ytop+($m1-$v)/($m1-$m0)*($ybot-$ytop)} }}
+        for {set i 0} {$i <= 3} {incr i} {
+            set v [expr {$m0+($m1-$m0)*$i/3.0}] ; set y [apply $ymag $v]
+            $c create line $ml $y [expr {$W-$mr}] $y -fill $T(edge)
+            $c create text [expr {$ml-6}] $y -text "[format %.0f $v]" -anchor e -fill $T(dim) -font $::schem::gui::FONTSM
+        }
+        $c create text [expr {$ml+4}] [expr {$ytop+2}] -text "|$label|  (dB)" -anchor nw -fill $T(accent) -font $::schem::gui::FONTH
+        set pts {}
+        foreach f $freqs v $mags { lappend pts [apply $xpix $f] [apply $ymag $v] }
+        if {[llength $pts] >= 4} { $c create line {*}$pts -fill $T(good) -width 2 -smooth 1 }
+        # phase pane
+        set ptop [expr {$ybot+$gap}] ; set pbot [expr {$ptop+$ph1}]
+        set p0 -180.0 ; set p1 180.0
+        set yph {{v} { upvar 1 ptop ptop pbot pbot p0 p0 p1 p1 ; expr {$ptop+($p1-$v)/($p1-$p0)*($pbot-$ptop)} }}
+        foreach v {-180 -90 0 90 180} {
+            set y [apply $yph $v]
+            $c create line $ml $y [expr {$W-$mr}] $y -fill [expr {$v==0 ? $T(edgehi) : $T(edge)}]
+            $c create text [expr {$ml-6}] $y -text "$v" -anchor e -fill $T(dim) -font $::schem::gui::FONTSM
+        }
+        $c create text [expr {$ml+4}] [expr {$ptop+2}] -text "phase (°)" -anchor nw -fill $T(probe) -font $::schem::gui::FONTH
+        set pts {}
+        foreach f $freqs v $phs { lappend pts [apply $xpix $f] [apply $yph $v] }
+        if {[llength $pts] >= 4} { $c create line {*}$pts -fill $T(probe) -width 2 }
+        # x labels (decade ticks)
+        for {set d [expr {int(floor($lf0))}]} {$d <= int(ceil($lf1))} {incr d} {
+            set f [expr {pow(10.0,$d)}]
+            if {$f < $f0 || $f > $f1} continue
+            set x [apply $xpix $f]
+            $c create line $x $mt $x [expr {$H-$mb}] -fill $T(edge) -dash {1 3}
+            $c create text $x [expr {$H-$mb+12}] -text "[my EngHz $f]" -fill $T(dim) -font $::schem::gui::FONTSM
+        }
+        $c create text [expr {($ml+$W-$mr)/2}] [expr {$H-6}] -text "frequency (Hz, log)" -fill $T(faint) -font $::schem::gui::FONTSM
+    }
+    method EngHz {f} {
+        if {$f >= 1e6} { return "[format %g [expr {$f/1e6}]]M" }
+        if {$f >= 1e3} { return "[format %g [expr {$f/1e3}]]k" }
+        return [format %g $f]
+    }
+
     method CmdReview {} {
         my CmdSolve
         set findings [::schem::ratings::check $S]
@@ -1699,9 +1921,10 @@ oo::class create ::schem::gui::App {
     method CmdHelp {} {
         my TextDialog "Keys & tools" \
 "TOOLS
-  Select   click parts to select; drag to move; edit values in the Inspector
+  Select   click to select; drag to move; double-click a switch/button/breaker
+           to operate it; edit values in the Inspector
   Wire     click a pin, then click another pin
-  Probe    after Solve, click a pin to read its node voltage
+  Probe    after Solve, click a pin for node voltage, or a part for I and P
 
 NAVIGATION
   +  -      zoom in / out          0   zoom to 100%        F   fit board to window
@@ -1712,8 +1935,9 @@ KEYS
   Ctrl+N / O / S   New / Open / Save
 
 ANALYSIS
-  Solve            DC operating point (voltages, currents)
+  Solve            DC operating point; Inspector shows V, I, P for the part
   Transient…       time-domain run with a live oscilloscope plot (AC, RC/RL)
+  AC sweep…        frequency response as a Bode plot (magnitude dB + phase)
   Design-rule check   anti-spaghetti + electrical checks
   Design review    every real part vs its datasheet ratings (over = red)
 

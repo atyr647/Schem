@@ -35,10 +35,13 @@ Requires Tk (`wish`).  On Linux: `apt-get install tk`.
 2. **Wire** -- with the Wire tool, click a pin, then click another pin.  A
    rubber-band follows the cursor; pins snap.
 3. **Solve** (F5) -- computes the DC operating point.  Node voltages appear on
-   the board; use the **Probe** tool to read any pin.  For time-varying
-   circuits (AC sources, RC/RL timing, rectifier ripple) use **Simulate ->
-   Transient analysis**, which runs a time-domain sweep and draws a live
-   oscilloscope plot of any node.
+   the board; the Inspector shows the selected part's measured **V, I and P**.
+   Use the **Probe** tool to read any pin's voltage, or click a part body for
+   its current and power.  Double-click a switch/button/breaker to operate it,
+   then re-solve.  For time-varying circuits use **Simulate -> Transient
+   analysis** (a live oscilloscope plot of any node), and for frequency
+   response **Simulate -> AC frequency sweep** (a Bode plot -- magnitude in dB
+   and phase, over a log-frequency axis).
 4. **Check** -- **Simulate -> Design-rule check** runs the anti-spaghetti and
    electrical checks; **Manufacture -> Design review** checks every *real*
    part's operating point against its datasheet absolute-max ratings.

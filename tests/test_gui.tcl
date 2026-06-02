@@ -181,6 +181,42 @@ ok "zoom-reset returns to 1.0"     {abs([$app5 do zoom]-1.0) < 1e-9}
 $app5 do command fitall
 ok "fit picks a sane zoom"         {[$app5 do zoom] > 0.3 && [$app5 do zoom] <= 3.0}
 
+# ====================================================================
+section "AC sweep, current/power probe, switch operation"
+# ====================================================================
+# RC low-pass: verify the GUI's AC path is electrically correct.
+set app7 [::schem::gui::App new [::schem::new rc]]
+set s7 [$app7 schematic]
+$app7 do pick-primitive battery ;   $app7 do click 200 200
+$app7 do pick-primitive resistor ;  $app7 do click 400 200
+$app7 do pick-primitive capacitor ; $app7 do click 520 360
+$app7 do pick-primitive ground ;    $app7 do click 200 360
+$s7 set R1 r 1600 ; $s7 set C1 c 1e-7
+$app7 do wire BT1.pos R1.a ; $app7 do wire R1.b C1.a ; $app7 do wire C1.b GND1.t ; $app7 do wire BT1.neg GND1.t
+# corner ~995 Hz: passband ~0 dB, -3 dB at corner, -20 dB/dec stopband
+ok "AC passband near 0 dB"     {abs([$app7 do ac-mag C1.a 100]) < 0.2}
+ok "AC -3 dB at the corner"    {abs([$app7 do ac-mag C1.a 995] - -3.01) < 0.2}
+ok "AC stopband ~ -20 dB/dec"  {abs([$app7 do ac-mag C1.a 10000] - -20.0) < 0.5}
+
+# current / power available after a solve
+$app7 do command solve
+ok "current is readable"       {![catch {[$app7 schematic] current R1}]}
+ok "power is readable"         {![catch {[$app7 schematic] power R1}]}
+
+# switch operation via double-click toggles state and forces a re-solve
+set app8 [::schem::gui::App new [::schem::new sw]]
+set s8 [$app8 schematic]
+$app8 do pick-primitive battery ; $app8 do click 200 200
+$app8 do pick-primitive switch ;  $app8 do click 400 200
+$app8 do pick-primitive resistor ;$app8 do click 600 200
+$app8 do pick-primitive ground ;  $app8 do click 200 360
+$app8 do wire BT1.pos SW1.a ; $app8 do wire SW1.b R1.a ; $app8 do wire R1.b GND1.t ; $app8 do wire BT1.neg GND1.t
+ok "switch starts open"        {[$app8 do stateof SW1] eq "open"}
+$app8 do dblclick 400 200
+ok "double-click closes it"    {[$app8 do stateof SW1] eq "closed"}
+$app8 do dblclick 400 200
+ok "double-click opens again"  {[$app8 do stateof SW1] eq "open"}
+
 # --------------------------------------------------------------------
 puts "\n$::T passed, $::F failed"
 exit [expr {$::F > 0}]

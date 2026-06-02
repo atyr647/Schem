@@ -46,7 +46,7 @@ proc ::schem::sym::P {x y dx dy s deg} {
 # draw -- dispatch to the per-type drawer.
 proc ::schem::sym::draw {c type x y args} {
     set o [dict create -scale 1.0 -standard ansi -tags {} -color "" \
-        -label "" -value "" -rot 0]
+        -label "" -value "" -rot 0 -state ""]
     dict for {k v} $args { dict set o $k $v }
     if {[dict get $o -color] eq ""} { dict set o -color $::schem::sym::INK }
     set fn ::schem::sym::draw_[string map {{ } _} $type]
@@ -183,7 +183,12 @@ proc ::schem::sym::draw_ground {c x y o base} {
 proc ::schem::sym::draw_switch {c x y o base} {
     ::schem::sym::line $c $x $y {-30 0 -12 0} $o
     ::schem::sym::circle $c $x $y -12 0 2 $o -fill [dict get $o -color]
-    ::schem::sym::line $c $x $y {-12 0 10 -12} $o    ;# open blade
+    # blade: horizontal (touching) when closed, lifted when open
+    if {[dict exists $o -state] && [dict get $o -state] in {closed pressed}} {
+        ::schem::sym::line $c $x $y {-12 0 12 0} $o
+    } else {
+        ::schem::sym::line $c $x $y {-12 0 10 -12} $o
+    }
     ::schem::sym::circle $c $x $y 12 0 2 $o -fill [dict get $o -color]
     ::schem::sym::line $c $x $y {12 0 30 0} $o
     ::schem::sym::labels $c $x $y $o 30 14
