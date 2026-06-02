@@ -30,20 +30,52 @@ package require Tk
 catch {encoding system utf-8}
 
 namespace eval ::schem::gui {
-    # theme -- the dark "Code panel" palette, shared with the SVG renderer.
+    # A modern dark design system.  Layered surfaces (deeper = further back),
+    # a restrained accent, and semantic state colours an engineer reads at a
+    # glance.  Tuned for contrast and calm -- not a wall of grey.
     variable T
     array set T {
-        bg      "#1c1c1c"   panel   "#242424"   panel2  "#2a2a2a"
-        ink     "#d4d4d4"   dim     "#8a8a8a"   faint   "#5a5a5a"
-        line    "#9a9a9a"   grid    "#262626"   gridhi  "#303030"
-        accent  "#6a9a6a"   warn    "#c0894a"   bad     "#c05a5a"
-        sel     "#6a8ac0"   live    "#7ab87a"   hot     "#c08a4a"
-        wire    "#9a9a9a"   probe   "#c0b04a"
+        bg       "#16181d"   surface  "#1d2026"   raised   "#23272f"
+        hover    "#2b303a"   active   "#323845"   sunken   "#13151a"
+        edge     "#2e333d"   edgehi   "#3a414d"
+        ink      "#e6e9ef"   dim      "#9aa0ab"   faint    "#5c6370"
+        accent   "#5aa0e0"   accent2  "#3d7fc4"   accentdim "#2a4866"
+        good     "#5fb87a"   warn     "#e0a458"   bad      "#e06a6a"
+        wire     "#aeb4be"   wirelive "#7ec88a"   probe    "#e0c264"
+        griddot  "#2a2e36"   gridcross "#353b45"  canvasbg "#191c22"
+        symbol   "#cfd4dd"   pin      "#7d8694"   pinhot   "#5aa0e0"
+        sel      "#5aa0e0"   selfill  "#1e3450"
     }
-    variable FONT       {TkDefaultFont 10}
-    variable FONTMONO   {TkFixedFont 10}
-    variable FONTH      {TkDefaultFont 11 bold}
+    # Type scale (DejaVu Sans is available and clean).
+    variable FONT       {"DejaVu Sans" 10}
+    variable FONTSM     {"DejaVu Sans" 9}
+    variable FONTMONO   {"DejaVu Sans Mono" 9}
+    variable FONTH      {"DejaVu Sans" 9 bold}
+    variable FONTTITLE  {"DejaVu Sans" 13 bold}
+    variable FONTBIG    {"DejaVu Sans" 20 bold}
     variable _wincount 0
+    variable _binY 0
+    variable _binN 0
+
+    # mix -- blend two #rrggbb colours by fraction f (0=a, 1=b).  Used for
+    # hover/press shading so states feel continuous.
+    proc mix {a b f} {
+        scan $a "#%2x%2x%2x" ar ag ab
+        scan $b "#%2x%2x%2x" br bg bb
+        return [format "#%02x%02x%02x" \
+            [expr {int($ar+($br-$ar)*$f)}] \
+            [expr {int($ag+($bg-$ag)*$f)}] \
+            [expr {int($ab+($bb-$ab)*$f)}]]
+    }
+    # roundrect -- a rounded rectangle as a smoothed polygon on a canvas.
+    proc roundrect {c x1 y1 x2 y2 r args} {
+        set pts [list \
+            $x1 [expr {$y1+$r}]  $x1 $y1  [expr {$x1+$r}] $y1 \
+            [expr {$x2-$r}] $y1  $x2 $y1  $x2 [expr {$y1+$r}] \
+            $x2 [expr {$y2-$r}]  $x2 $y2  [expr {$x2-$r}] $y2 \
+            [expr {$x1+$r}] $y2  $x1 $y2  $x1 [expr {$y2-$r}]]
+        return [$c create polygon $pts -smooth 1 -splinesteps 12 {*}$args]
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -53,6 +85,9 @@ oo::class create ::schem::gui::App {
     variable S          ;# the schematic (model)
     variable Win        ;# toplevel
     variable Canvas     ;# the schematic canvas
+    variable Tbar       ;# the custom toolbar canvas
+    variable TbarW      ;# last toolbar width (resize debounce)
+    variable TbarBusy   ;# reentrancy guard for DrawToolbar
     variable Parts      ;# parts-bin tree
     variable Insp       ;# inspector frame
     variable Status     ;# status bar text var (array-backed)
@@ -68,6 +103,7 @@ oo::class create ::schem::gui::App {
     variable PendWire   ;# wire-in-progress: starting terminal or ""
     variable Pending    ;# armed placement: {primitive TYPE} | {part ID} | ""
     variable Result     ;# last solve result flag
+    variable StatusChip ;# status-bar state chip widget
 
     constructor {{schem {}} {parent {}}} {
         if {$schem eq ""} { set S [::schem::new untitled] } else { set S $schem }
@@ -113,10 +149,14 @@ oo::class create ::schem::gui::App {
     }
 
     # callback -- a command prefix that invokes a method on THIS object, for
-    # -command / bind.  (Tcl 8.7 has a built-in `callback`; we provide our own
-    # so the workbench runs on stock 8.6.)  Trailing %-substitutions from bind
-    # are appended by Tk after these args.
-    method callback {args} { return [list [self] {*}$args] }
+    # -command / bind.  Tk runs these at global scope, where unexported
+    # (capitalised) methods are not visible -- so we route through `dispatch`,
+    # an exported forwarder.  (Tcl 8.7's built-in `callback` handles this; we
+    # provide our own so the workbench runs on stock 8.6.)  Trailing
+    # %-substitutions from bind are appended by Tk after these args.
+    method callback {args} { return [list [self] dispatch {*}$args] }
+    method dispatch {m args} { my $m {*}$args }
+    export dispatch
 
     # ----- UI construction -------------------------------------------------
     method BuildUI {root} {
@@ -150,7 +190,7 @@ oo::class create ::schem::gui::App {
 
     method BuildMenu {} {
         variable ::schem::gui::T
-        set m [menu $Win.menu -tearoff 0 -bg $T(panel) -fg $T(ink) \
+        set m [menu $Win.menu -tearoff 0 -bg $T(surface) -fg $T(ink) \
             -activebackground $T(sel) -activeforeground white]
         $Win configure -menu $m
         set fm [menu $m.file -tearoff 0]
@@ -197,62 +237,172 @@ oo::class create ::schem::gui::App {
         bind $Win <Key-t>     [my callback Cmd togglestd]
     }
 
+    # A custom-drawn toolbar: rounded "pill" buttons with little glyph icons,
+    # hover and active states, and a segmented tool group on the left.  Far
+    # cleaner than stock Tk buttons.
     method BuildToolbar {} {
         variable ::schem::gui::T
-        set tb [frame $Win.tb -bg $T(panel2)]
-        pack $tb -side top -fill x
-        foreach {tool label} {select Select wire Wire probe Probe} {
-            set b [radiobutton $tb.t$tool -text $label -value $tool \
-                -variable [my varname Tool] -indicatoron 0 -width 8 \
-                -command [my callback SetTool $tool] \
-                -bg $T(panel) -fg $T(ink) -selectcolor $T(sel) \
-                -activebackground $T(sel) -relief flat -padx 8 -pady 4]
-            pack $b -side left -padx 2 -pady 3
+        set Tbar [canvas $Win.tb -bg $T(raised) -height 52 -highlightthickness 0 -bd 0]
+        pack $Tbar -side top -fill x
+        set TbarW 0
+        # redraw only when the width actually changes (item creation can re-fire
+        # <Configure> with the same width; a reentrancy guard makes that a no-op).
+        bind $Tbar <Configure> [my callback OnTbarConfigure %w]
+        after 40 [my callback DrawToolbar]
+    }
+
+    method OnTbarConfigure {w} {
+        if {$w == $TbarW} return
+        set TbarW $w
+        my DrawToolbar
+    }
+
+    # toolbar button registry: id -> {x1 x2 kind value icon label}
+    method DrawToolbar {} {
+        variable ::schem::gui::T
+        if {![winfo exists $Tbar]} return
+        if {[info exists TbarBusy] && $TbarBusy} return
+        set TbarBusy 1
+        set TbarW [winfo width $Tbar]
+        $Tbar delete all
+        set x 12 ; set y 10 ; set h 32
+        # segmented tool group
+        set tools {select Select cursor  wire Wire wire  probe Probe probe}
+        set gx0 $x
+        foreach {val label icon} $tools {
+            set w [expr {[font measure {"DejaVu Sans" 9} $label] + 46}]
+            set on [expr {$Tool eq $val}]
+            my TbarPill tool $val $x $y [expr {$x+$w}] [expr {$y+$h}] $label $icon $on
+            set x [expr {$x+$w+4}]
         }
-        # separators + quick actions
-        label $tb.sep1 -text "  |  " -bg $T(panel2) -fg $T(faint)
-        pack $tb.sep1 -side left
-        foreach {cmd label} {solve "Solve (F5)" review "Design review" rotate "Rotate (R)" delete "Delete"} {
-            set b [button $tb.b$cmd -text $label -command [my callback Cmd $cmd] \
-                -bg $T(panel) -fg $T(ink) -activebackground $T(sel) \
-                -relief flat -padx 8 -pady 4]
-            pack $b -side left -padx 2 -pady 3
+        # divider
+        incr x 8
+        $Tbar create line $x [expr {$y+4}] $x [expr {$y+$h-4}] -fill $T(edge)
+        incr x 12
+        # action buttons
+        foreach {cmd label icon} {solve "Solve" play  review "Design review" check  rotate "Rotate" rot  delete "Delete" trash} {
+            set w [expr {[font measure {"DejaVu Sans" 9} $label] + 46}]
+            my TbarPill action $cmd $x $y [expr {$x+$w}] [expr {$y+$h}] $label $icon 0
+            set x [expr {$x+$w+4}]
         }
-        label $tb.std -textvariable [my varname Std] -bg $T(panel2) -fg $T(accent) -width 6
-        pack $tb.std -side right -padx 8
-        label $tb.stdl -text "symbols:" -bg $T(panel2) -fg $T(dim)
-        pack $tb.stdl -side right
+        # right side: symbol-standard toggle
+        set W [winfo width $Tbar] ; if {$W < 50} { set W 1400 }
+        set sw 150
+        my TbarPill std toggle [expr {$W-$sw-12}] $y [expr {$W-12}] [expr {$y+$h}] \
+            "Symbols: [string toupper $Std]" sym 0
+        set TbarBusy 0
+    }
+
+    # TbarPill -- one rounded toolbar button with an icon and hover/active state.
+    method TbarPill {kind value x1 y1 x2 y2 label icon active} {
+        variable ::schem::gui::T
+        set tag "tb_${kind}_${value}"
+        if {$active} { set fill $T(accent2) ; set fg white ; set ic white } \
+        else { set fill $T(surface) ; set fg $T(ink) ; set ic $T(dim) }
+        set bgid [::schem::gui::roundrect $Tbar $x1 $y1 $x2 $y2 7 -fill $fill -outline "" -tags $tag]
+        set iconx [expr {$x1+16}] ; set icy [expr {($y1+$y2)/2}]
+        my DrawIcon $Tbar $icon $iconx $icy $ic $tag
+        $Tbar create text [expr {$x1+30}] $icy -text $label -anchor w -fill $fg \
+            -font {"DejaVu Sans" 9} -tags $tag
+        # interaction
+        switch -- $kind {
+            tool   { set cmd [my callback SetTool $value] }
+            action { set cmd [my callback Cmd $value] }
+            std    { set cmd [my callback Cmd togglestd] }
+        }
+        $Tbar bind $tag <Button-1> $cmd
+        if {!$active} {
+            $Tbar bind $tag <Enter> [list $Tbar itemconfigure $bgid -fill $T(hover)]
+            $Tbar bind $tag <Leave> [list $Tbar itemconfigure $bgid -fill $T(surface)]
+        }
+    }
+
+    # DrawIcon -- a tiny 14px line glyph, centred at (x,y).
+    method DrawIcon {c name x y col tag} {
+        set s 6
+        switch -- $name {
+            cursor {
+                $c create line $x [expr {$y-$s}] $x [expr {$y+$s-1}] [expr {$x+4}] [expr {$y+2}] [expr {$x-1}] [expr {$y+2}] \
+                    -fill $col -width 1.5 -tags $tag
+            }
+            wire {
+                $c create line [expr {$x-$s}] [expr {$y+$s}] [expr {$x+$s}] [expr {$y-$s}] -fill $col -width 2 -tags $tag
+                $c create oval [expr {$x-$s-2}] [expr {$y+$s-2}] [expr {$x-$s+2}] [expr {$y+$s+2}] -fill $col -outline $col -tags $tag
+                $c create oval [expr {$x+$s-2}] [expr {$y-$s-2}] [expr {$x+$s+2}] [expr {$y-$s+2}] -fill $col -outline $col -tags $tag
+            }
+            probe {
+                $c create line [expr {$x-$s}] [expr {$y+$s}] [expr {$x+2}] [expr {$y-2}] -fill $col -width 2 -tags $tag
+                $c create line [expr {$x+1}] [expr {$y-3}] [expr {$x+$s}] [expr {$y-$s}] -fill $col -width 3 -tags $tag
+            }
+            play {
+                $c create polygon [expr {$x-4}] [expr {$y-$s}] [expr {$x-4}] [expr {$y+$s}] [expr {$x+$s}] $y \
+                    -fill $col -outline $col -tags $tag
+            }
+            check {
+                $c create line [expr {$x-$s}] $y [expr {$x-1}] [expr {$y+$s-1}] [expr {$x+$s}] [expr {$y-$s}] \
+                    -fill $col -width 2 -tags $tag
+            }
+            rot {
+                $c create arc [expr {$x-$s}] [expr {$y-$s}] [expr {$x+$s}] [expr {$y+$s}] -start 40 -extent 280 \
+                    -style arc -outline $col -width 1.5 -tags $tag
+                $c create line [expr {$x+$s-1}] [expr {$y-$s+1}] [expr {$x+2}] [expr {$y-$s+1}] -fill $col -width 1.5 -tags $tag
+                $c create line [expr {$x+$s-1}] [expr {$y-$s+1}] [expr {$x+$s-1}] [expr {$y-1}] -fill $col -width 1.5 -tags $tag
+            }
+            trash {
+                $c create rectangle [expr {$x-4}] [expr {$y-3}] [expr {$x+4}] [expr {$y+$s}] -outline $col -width 1.5 -tags $tag
+                $c create line [expr {$x-$s}] [expr {$y-3}] [expr {$x+$s}] [expr {$y-3}] -fill $col -width 1.5 -tags $tag
+                $c create line [expr {$x-2}] [expr {$y-5}] [expr {$x+2}] [expr {$y-5}] -fill $col -width 1.5 -tags $tag
+            }
+            sym {
+                $c create line [expr {$x-$s}] $y [expr {$x-2}] $y -fill $col -width 1.5 -tags $tag
+                $c create rectangle [expr {$x-2}] [expr {$y-3}] [expr {$x+2}] [expr {$y+3}] -outline $col -width 1.5 -tags $tag
+                $c create line [expr {$x+2}] $y [expr {$x+$s}] $y -fill $col -width 1.5 -tags $tag
+            }
+        }
     }
 
     method BuildPartsBin {parent} {
         variable ::schem::gui::T
-        set f [frame $parent.bin -bg $T(panel) -width 220]
+        set f [frame $parent.bin -bg $T(surface) -width 248]
         pack $f -side left -fill y
         pack propagate $f 0
-        label $f.h -text "PARTS BIN" -bg $T(panel) -fg $T(dim) -anchor w \
-            -font $::schem::gui::FONTH -padx 10 -pady 6
-        pack $f.h -side top -fill x
-        # a scrollable tree of catalog categories -> parts
-        set tree [frame $f.tree -bg $T(panel)]
+        # header with a subtle search field
+        set hd [frame $f.hd -bg $T(surface)]
+        pack $hd -side top -fill x
+        label $hd.h -text "Parts" -bg $T(surface) -fg $T(ink) -anchor w \
+            -font $::schem::gui::FONTTITLE -padx 14
+        pack $hd.h -side top -fill x -pady {12 2}
+        label $hd.sub -text "click a part, then click the board" -bg $T(surface) -fg $T(faint) \
+            -anchor w -font $::schem::gui::FONTSM -padx 14
+        pack $hd.sub -side top -fill x -pady {0 8}
+        # scrollable canvas of symbol rows
+        set tree [frame $f.tree -bg $T(surface)]
         pack $tree -side top -fill both -expand 1
-        set Parts [text $tree.t -bg $T(panel) -fg $T(ink) -bd 0 -highlightthickness 0 \
-            -cursor hand2 -wrap none -padx 8 -font $::schem::gui::FONTMONO \
-            -yscrollcommand [list $tree.sb set]]
-        scrollbar $tree.sb -command [list $Parts yview] -bg $T(panel2) -troughcolor $T(panel)
+        set Parts [canvas $tree.c -bg $T(surface) -highlightthickness 0 -bd 0]
+        scrollbar $tree.sb -command [list $Parts yview] -bd 0 -highlightthickness 0 \
+            -bg $T(surface) -troughcolor $T(surface) -activebackground $T(edgehi) \
+            -elementborderwidth 0 -width 10
+        $Parts configure -yscrollcommand [list $tree.sb set]
         pack $tree.sb -side right -fill y
         pack $Parts -side left -fill both -expand 1
+        # scroll wheel
+        bind $Parts <Button-4> [list $Parts yview scroll -2 units]
+        bind $Parts <Button-5> [list $Parts yview scroll 2 units]
+        bind $Parts <MouseWheel> [list $Parts yview scroll {%D -120 /} units]
         my PopulateParts
     }
 
     method BuildCanvas {parent} {
         variable ::schem::gui::T
-        set f [frame $parent.cv -bg $T(bg)]
+        set f [frame $parent.cv -bg $T(canvasbg)]
         pack $f -side left -fill both -expand 1
-        set Canvas [canvas $f.c -bg $T(bg) -highlightthickness 0]
+        set Canvas [canvas $f.c -bg $T(canvasbg) -highlightthickness 0]
         set hsb [scrollbar $f.h -orient horizontal -command [list $Canvas xview] \
-            -bg $T(panel2) -troughcolor $T(bg)]
+            -bd 0 -highlightthickness 0 -bg $T(surface) -troughcolor $T(canvasbg) \
+            -activebackground $T(edgehi) -elementborderwidth 0 -width 11]
         set vsb [scrollbar $f.v -orient vertical -command [list $Canvas yview] \
-            -bg $T(panel2) -troughcolor $T(bg)]
+            -bd 0 -highlightthickness 0 -bg $T(surface) -troughcolor $T(canvasbg) \
+            -activebackground $T(edgehi) -elementborderwidth 0 -width 11]
         $Canvas configure -xscrollcommand [list $hsb set] -yscrollcommand [list $vsb set] \
             -scrollregion {0 0 2000 1400}
         grid $Canvas -row 0 -column 0 -sticky nsew
@@ -270,38 +420,62 @@ oo::class create ::schem::gui::App {
 
     method BuildInspector {parent} {
         variable ::schem::gui::T
-        set f [frame $parent.insp -bg $T(panel) -width 280]
+        set f [frame $parent.insp -bg $T(surface) -width 296]
         pack $f -side right -fill y
         pack propagate $f 0
-        label $f.h -text "INSPECTOR" -bg $T(panel) -fg $T(dim) -anchor w \
-            -font $::schem::gui::FONTH -padx 10 -pady 6
-        pack $f.h -side top -fill x
-        set Insp [frame $f.body -bg $T(panel)]
-        pack $Insp -side top -fill both -expand 1 -padx 8
+        # a thin accent edge on the left of the panel
+        frame $f.edge -bg $T(edge) -width 1
+        pack $f.edge -side left -fill y
+        set inner [frame $f.in -bg $T(surface)]
+        pack $inner -side left -fill both -expand 1
+        label $inner.h -text "Inspector" -bg $T(surface) -fg $T(ink) -anchor w \
+            -font $::schem::gui::FONTTITLE -padx 16
+        pack $inner.h -side top -fill x -pady {12 8}
+        set Insp [frame $inner.body -bg $T(surface)]
+        pack $Insp -side top -fill both -expand 1 -padx 16
         my ShowInspector
     }
 
     method BuildStatusBar {} {
         variable ::schem::gui::T
-        set sb [frame $Win.sb -bg $T(panel2)]
+        set sb [frame $Win.sb -bg $T(sunken) -height 26]
         pack $sb -side bottom -fill x
-        label $sb.l -textvariable [my varname Status](text) -bg $T(panel2) -fg $T(dim) \
-            -anchor w -padx 10 -pady 3 -font $::schem::gui::FONT
+        pack propagate $sb 0
+        # a small state chip on the left
+        label $sb.chip -textvariable [my varname Status](chip) -bg $T(sunken) \
+            -fg $T(bg) -font {"DejaVu Sans" 8 bold} -padx 8
+        pack $sb.chip -side left -fill y -pady 4 -padx {8 0}
+        label $sb.l -textvariable [my varname Status](text) -bg $T(sunken) -fg $T(dim) \
+            -anchor w -padx 10 -font $::schem::gui::FONTSM
         pack $sb.l -side left -fill x -expand 1
-        label $sb.r -textvariable [my varname Status](right) -bg $T(panel2) -fg $T(accent) \
-            -anchor e -padx 10 -font $::schem::gui::FONTMONO
+        label $sb.r -textvariable [my varname Status](right) -bg $T(sunken) -fg $T(accent) \
+            -anchor e -padx 12 -font $::schem::gui::FONTMONO
         pack $sb.r -side right
+        set StatusChip $sb.chip
     }
 
     method ApplyTheme {} {
         variable ::schem::gui::T
         # ttk-free; just ensure option defaults for any future widgets
-        option add *background $T(panel)
+        option add *background $T(surface)
         option add *foreground $T(ink)
     }
 
     method SetStatus {msg {right ""}} {
+        variable ::schem::gui::T
         set Status(text) $msg ; set Status(right) $right
+        # colour a small state chip from the right-hand keyword
+        set chip "" ; set col $T(dim)
+        switch -glob -- $right {
+            OK    { set chip " OK " ; set col $T(good) }
+            WARN  { set chip "WARN" ; set col $T(warn) }
+            FAIL  { set chip "FAIL" ; set col $T(bad) }
+            *=*V  { set chip "  V " ; set col $T(probe) }
+        }
+        set Status(chip) $chip
+        if {[info exists StatusChip] && [winfo exists $StatusChip]} {
+            $StatusChip configure -bg [expr {$chip eq "" ? $T(sunken) : $col}]
+        }
     }
 
     # ----- parts bin -------------------------------------------------------
@@ -309,58 +483,90 @@ oo::class create ::schem::gui::App {
     # top (the raw electrical elements), then the REAL parts grouped by the job
     # they do (rectifier, smoothing, transistor, ...).  Click a part, then click
     # the canvas to place it -- or drag it straight onto the board.
+    # PopulateParts -- draw the bin as a column of rows, each showing the part's
+    # actual schematic symbol beside its name, so you recognise it on sight.
     method PopulateParts {} {
         variable ::schem::gui::T
-        $Parts configure -state normal
-        $Parts delete 1.0 end
-        $Parts tag configure cat -foreground $T(accent) -font {TkDefaultFont 10 bold} \
-            -spacing1 8 -spacing3 2
-        $Parts tag configure prim -foreground $T(ink) -lmargin1 16 -lmargin2 16
-        $Parts tag configure part -foreground $T(ink) -lmargin1 16 -lmargin2 28
-        $Parts tag configure spec -foreground $T(dim)
+        if {![winfo exists $Parts]} return
+        $Parts delete all
+        set w [winfo width $Parts] ; if {$w < 20} { set w 230 }
+        set ::schem::gui::_binY 0
+        set BinHit [dict create]
 
-        # primitive elements -- the basic parts, grouped like a part bin
-        my BinCategory "BASIC ELEMENTS"
+        my BinCategory "Basic elements"
         foreach {type label} {
-            battery "Battery / source"  vsource "AC source (~)"  ground "Ground"
+            battery "Battery"  vsource "AC source"  ground "Ground"
             resistor "Resistor"  capacitor "Capacitor"  inductor "Inductor"
-            switch "Switch"  button "Pushbutton"  relay "Relay"
-            diode "Diode"  bjt "Transistor (BJT)"  mosfet "MOSFET"
-            lamp "Lamp"  fuse "Fuse"  junction "Junction / node"
-        } {
-            my BinPrimitive $type $label
-        }
+            diode "Diode"  bjt "Transistor"  mosfet "MOSFET"
+            switch "Switch"  button "Button"  relay "Relay"
+            lamp "Lamp"  fuse "Fuse"
+        } { my BinRow $type $label "" "" }
 
-        # real parts, by category
         foreach cat [::schem::parts::categories] {
-            my BinCategory [string toupper "$cat parts"]
+            my BinCategory [my TitleCase $cat]
             foreach id [::schem::parts::byCategory $cat] {
-                my BinPart $id
+                set spec [::schem::parts::get $id]
+                my BinRow [dict get $spec type] $id [dict get $spec desc] $id
             }
         }
-        $Parts configure -state disabled
+        $Parts configure -scrollregion [list 0 0 $w $::schem::gui::_binY]
+    }
+
+    method TitleCase {s} {
+        set out {}
+        foreach w [split [string map {- " "} $s] " "] {
+            lappend out [string toupper [string index $w 0]][string range $w 1 end]
+        }
+        return [join $out " "]
     }
 
     method BinCategory {name} {
-        $Parts insert end "$name\n" cat
-    }
-    method BinPrimitive {type label} {
         variable ::schem::gui::T
-        set tag "prim_$type"
-        $Parts insert end "  $label\n" [list prim $tag]
-        $Parts tag bind $tag <Button-1> [my callback PickPrimitive $type]
-        $Parts tag bind $tag <Enter> [list $Parts tag configure $tag -background $T(panel2)]
-        $Parts tag bind $tag <Leave> [list $Parts tag configure $tag -background $T(panel)]
+        set y $::schem::gui::_binY
+        incr y 6
+        $Parts create text 14 [expr {$y+8}] -text [string toupper $name] -anchor w \
+            -fill $T(faint) -font {"DejaVu Sans" 8 bold}
+        $Parts create line 14 [expr {$y+22}] 234 [expr {$y+22}] -fill $T(edge)
+        set ::schem::gui::_binY [expr {$y+30}]
     }
-    method BinPart {id} {
+
+    # BinRow -- one selectable row: a small symbol preview + label (+ part id).
+    #   type  : schem primitive (for the symbol)
+    #   label : display name
+    #   desc  : datasheet one-liner (real parts; "" for primitives)
+    #   partid: catalog id ("" for a primitive)
+    method BinRow {type label desc partid} {
         variable ::schem::gui::T
-        set spec [::schem::parts::get $id]
-        set tag "part_$id"
-        $Parts insert end "  $id" [list part $tag]
-        $Parts insert end "  [dict get $spec desc]\n" [list spec $tag]
-        $Parts tag bind $tag <Button-1> [my callback PickPart $id]
-        $Parts tag bind $tag <Enter> [list $Parts tag configure $tag -background $T(panel2)]
-        $Parts tag bind $tag <Leave> [list $Parts tag configure $tag -background $T(panel)]
+        set y $::schem::gui::_binY
+        set h 38
+        set tag "row[incr ::schem::gui::_binN]"
+        # hit/hover background (drawn, toggled on enter/leave)
+        set bgid [::schem::gui::roundrect $Parts 6 $y 240 [expr {$y+$h-4}] 6 \
+            -fill $T(surface) -outline "" -tags [list $tag bg]]
+        # symbol preview, centred in a 40px gutter
+        set cx 30 ; set cy [expr {$y+($h-4)/2}]
+        ::schem::sym::draw $Parts $type $cx $cy -scale 0.42 -standard $Std \
+            -color $T(symbol) -tags $tag
+        # label + optional id/desc
+        if {$partid ne ""} {
+            $Parts create text 54 [expr {$cy-6}] -text $partid -anchor w \
+                -fill $T(ink) -font {"DejaVu Sans" 9 bold} -tags $tag
+            $Parts create text 54 [expr {$cy+8}] -text $desc -anchor w \
+                -fill $T(dim) -font {"DejaVu Sans" 8} -tags $tag
+        } else {
+            $Parts create text 54 $cy -text $label -anchor w \
+                -fill $T(ink) -font {"DejaVu Sans" 10} -tags $tag
+        }
+        # interaction
+        if {$partid ne ""} {
+            set pick [my callback PickPart $partid]
+        } else {
+            set pick [my callback PickPrimitive $type]
+        }
+        $Parts bind $tag <Button-1> $pick
+        $Parts bind $tag <Enter> [list $Parts itemconfigure $bgid -fill $T(hover)]
+        $Parts bind $tag <Leave> [list $Parts itemconfigure $bgid -fill $T(surface)]
+        set ::schem::gui::_binY [expr {$y+$h}]
     }
 
     # PickPrimitive / PickPart -- arm placement of the chosen part; the next
@@ -374,7 +580,7 @@ oo::class create ::schem::gui::App {
         my SetStatus "Place '$id' -- click on the schematic." "part: $id"
     }
 
-    method SetTool {t} { set Tool $t ; set PendWire "" ; my SetStatus "Tool: $t" ; my Redraw }
+    method SetTool {t} { set Tool $t ; set PendWire "" ; my SetStatus "Tool: $t" ; my DrawToolbar ; my Redraw }
 
     # ----- the canvas: grid, symbols, wires, probes ------------------------
     method Redraw {} {
@@ -416,17 +622,24 @@ oo::class create ::schem::gui::App {
         }
     }
 
+    # A dot grid -- a dot at each snap point, brighter on the major (5-grid)
+    # intersections.  Cleaner and less busy than ruled lines, the way modern
+    # design/EDA canvases look.
     method DrawGrid {} {
         variable ::schem::gui::T
         lassign [my CanvasSize] W H
         set g $Grid
-        for {set x 0} {$x < $W} {incr x $g} {
-            set hi [expr {$x % ($g*5) == 0}]
-            $Canvas create line $x 0 $x $H -fill [expr {$hi ? $T(gridhi) : $T(grid)}] -tags grid
-        }
-        for {set y 0} {$y < $H} {incr y $g} {
-            set hi [expr {$y % ($g*5) == 0}]
-            $Canvas create line 0 $y $W $y -fill [expr {$hi ? $T(gridhi) : $T(grid)}] -tags grid
+        for {set x 0} {$x <= $W} {incr x $g} {
+            for {set y 0} {$y <= $H} {incr y $g} {
+                set maj [expr {$x % ($g*5) == 0 && $y % ($g*5) == 0}]
+                if {$maj} {
+                    set c $T(gridcross) ; set r 1.4
+                } else {
+                    set c $T(griddot) ; set r 0.9
+                }
+                $Canvas create oval [expr {$x-$r}] [expr {$y-$r}] [expr {$x+$r}] [expr {$y+$r}] \
+                    -fill $c -outline "" -tags grid
+            }
         }
     }
 
@@ -456,7 +669,7 @@ oo::class create ::schem::gui::App {
             set px [expr {$x+$dx}] ; set py [expr {$y+$dy}]
             dict set abspins $pin [list $px $py]
             $Canvas create oval [expr {$px-3}] [expr {$py-3}] [expr {$px+3}] [expr {$py+3}] \
-                -fill $T(panel) -outline $T(dim) -width 1 -tags [list pin pin_${name}_$pin]
+                -fill $T(surface) -outline $T(dim) -width 1 -tags [list pin pin_${name}_$pin]
             $Canvas bind pin_${name}_$pin <Enter> [my callback HoverPin $name $pin]
         }
         dict set Placed $name pinabs $abspins
@@ -530,7 +743,7 @@ oo::class create ::schem::gui::App {
     method NetColor {term} {
         variable ::schem::gui::T
         if {[catch {$S probe $term} v]} { return $T(wire) }
-        if {$v > 6} { return $T(live) }
+        if {$v > 6} { return $T(wirelive) }
         return $T(wire)
     }
 
@@ -678,36 +891,36 @@ oo::class create ::schem::gui::App {
         foreach c [winfo children $Insp] { destroy $c }
         if {$Sel eq "" || ![dict exists $Placed $Sel]} {
             label $Insp.none -text "No selection.\n\nClick a part to inspect\nand edit its values." \
-                -bg $T(panel) -fg $T(dim) -justify left -anchor nw
+                -bg $T(surface) -fg $T(dim) -justify left -anchor nw
             pack $Insp.none -fill x -anchor nw -pady 8
             my ShowBoardSummary
             return
         }
         set pl [dict get $Placed $Sel]
         set type [dict get $pl type] ; set partid [dict get $pl partid]
-        label $Insp.name -text $Sel -bg $T(panel) -fg $T(ink) -font {TkDefaultFont 14 bold} -anchor w
+        label $Insp.name -text $Sel -bg $T(surface) -fg $T(ink) -font {TkDefaultFont 14 bold} -anchor w
         pack $Insp.name -fill x -anchor w
-        label $Insp.type -text $type -bg $T(panel) -fg $T(accent) -anchor w
+        label $Insp.type -text $type -bg $T(surface) -fg $T(accent) -anchor w
         pack $Insp.type -fill x -anchor w
         if {$partid ne ""} {
             set spec [::schem::parts::get $partid]
-            label $Insp.pid -text "$partid -- [dict get $spec mfr]" -bg $T(panel) -fg $T(dim) \
+            label $Insp.pid -text "$partid -- [dict get $spec mfr]" -bg $T(surface) -fg $T(dim) \
                 -anchor w -wraplength 250 -justify left
             pack $Insp.pid -fill x -anchor w
-            label $Insp.pdesc -text [dict get $spec desc] -bg $T(panel) -fg $T(dim) \
+            label $Insp.pdesc -text [dict get $spec desc] -bg $T(surface) -fg $T(dim) \
                 -anchor w -wraplength 250 -justify left
             pack $Insp.pdesc -fill x -anchor w -pady {0 6}
         }
         if {![catch {$S get $Sel} params] && [dict size $params]} {
-            label $Insp.ph -text "PARAMETERS" -bg $T(panel) -fg $T(dim) -font {TkDefaultFont 9 bold} -anchor w
+            label $Insp.ph -text "PARAMETERS" -bg $T(surface) -fg $T(dim) -font {TkDefaultFont 9 bold} -anchor w
             pack $Insp.ph -fill x -anchor w -pady {8 2}
             set i 0
             dict for {k v} $params {
-                set row [frame $Insp.p$i -bg $T(panel)]
+                set row [frame $Insp.p$i -bg $T(surface)]
                 pack $row -fill x -anchor w -pady 1
-                label $row.k -text $k -bg $T(panel) -fg $T(ink) -width 8 -anchor w
+                label $row.k -text $k -bg $T(surface) -fg $T(ink) -width 8 -anchor w
                 pack $row.k -side left
-                set ev [entry $row.v -bg $T(panel2) -fg $T(ink) -insertbackground $T(ink) -relief flat -width 14]
+                set ev [entry $row.v -bg $T(raised) -fg $T(ink) -insertbackground $T(ink) -relief flat -width 14]
                 $ev insert 0 $v
                 pack $ev -side left -fill x -expand 1
                 bind $ev <Return>   [my callback SetParam $Sel $k $ev]
@@ -720,7 +933,7 @@ oo::class create ::schem::gui::App {
 
     method ShowRatings {findings} {
         variable ::schem::gui::T
-        label $Insp.rh -text "RATINGS" -bg $T(panel) -fg $T(dim) -font {TkDefaultFont 9 bold} -anchor w
+        label $Insp.rh -text "RATINGS" -bg $T(surface) -fg $T(dim) -font {TkDefaultFont 9 bold} -anchor w
         pack $Insp.rh -fill x -anchor w -pady {10 2}
         set i 0
         foreach r $findings {
@@ -728,7 +941,7 @@ oo::class create ::schem::gui::App {
             set txt [format "%s  %.3g/%.3g %s  (%.0f%%)" [dict get $r limit] \
                 [dict get $r measured] [dict get $r rating] [dict get $r unit] \
                 [expr {[dict get $r margin]*100}]]
-            label $Insp.r$i -text $txt -bg $T(panel) -fg $col -anchor w -font {TkFixedFont 9}
+            label $Insp.r$i -text $txt -bg $T(surface) -fg $col -anchor w -font {TkFixedFont 9}
             pack $Insp.r$i -fill x -anchor w
             incr i
         }
@@ -737,10 +950,10 @@ oo::class create ::schem::gui::App {
     method ShowBoardSummary {} {
         variable ::schem::gui::T
         label $Insp.sum -text "Board: [dict size $Placed] part(s), [llength $Wires] wire(s)" \
-            -bg $T(panel) -fg $T(dim) -anchor w -wraplength 250 -justify left
+            -bg $T(surface) -fg $T(dim) -anchor w -wraplength 250 -justify left
         pack $Insp.sum -fill x -anchor w -pady {16 0}
         if {$Result eq "solved"} {
-            label $Insp.solved -text "Solved.  Use Probe to read nodes." -bg $T(panel) \
+            label $Insp.solved -text "Solved.  Use Probe to read nodes." -bg $T(surface) \
                 -fg $T(accent) -anchor w -wraplength 250 -justify left
             pack $Insp.solved -fill x -anchor w
         }
@@ -748,7 +961,7 @@ oo::class create ::schem::gui::App {
         # design review -- the workflow an EE expects next.
         if {[dict size $Placed] > 0 && $Result ne "solved"} {
             label $Insp.hint -text "Press F5 to solve, then Manufacture -> Design review to check parts against their ratings." \
-                -bg $T(panel) -fg $T(faint) -anchor w -wraplength 250 -justify left
+                -bg $T(surface) -fg $T(faint) -anchor w -wraplength 250 -justify left
             pack $Insp.hint -fill x -anchor w -pady {8 0}
         }
     }
@@ -775,7 +988,7 @@ oo::class create ::schem::gui::App {
             delete     { my CmdDelete }
             rotate     { my CmdRotate }
             clear      { my CmdClear }
-            togglestd  { set Std [expr {$Std eq "ansi" ? "iec" : "ansi"}] ; my Redraw ; my SetStatus "symbols: $Std" }
+            togglestd  { set Std [expr {$Std eq "ansi" ? "iec" : "ansi"}] ; my DrawToolbar ; my PopulateParts ; my Redraw ; my SetStatus "symbols: $Std" }
             fit        { my Redraw }
             solve      { my CmdSolve }
             clearresults { set Result none ; my Redraw ; my SetStatus "results cleared" }

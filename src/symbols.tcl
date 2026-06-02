@@ -280,3 +280,72 @@ proc ::schem::sym::draw_generic {c x y o base} {
     ::schem::sym::labels $c $x $y $o 28 20
     return [::schem::sym::result $o 56 32 {a {-28 0} b {28 0}}]
 }
+
+# vsource -- an AC source: a circle with a sine wave inside; pos/neg leads.
+proc ::schem::sym::draw_vsource {c x y o base} {
+    ::schem::sym::line $c $x $y {-30 0 -13 0} $o
+    ::schem::sym::circle $c $x $y 0 0 13 $o
+    # sine inside
+    set pts {}
+    for {set i -9} {$i <= 9} {incr i} {
+        lappend pts $i [expr {-6*sin($i/9.0*3.14159)}]
+    }
+    ::schem::sym::line $c $x $y $pts $o -smooth 1
+    ::schem::sym::line $c $x $y {13 0 30 0} $o
+    ::schem::sym::labels $c $x $y $o 30 15
+    return [::schem::sym::result $o 60 26 {pos {-30 0} neg {30 0}}]
+}
+
+# bjt -- a bipolar transistor: base bar, collector/emitter legs, emitter arrow.
+# Terminals b (left), c (top-right), e (bottom-right).
+proc ::schem::sym::draw_bjt {c x y o base} {
+    set col [dict get $o -color]
+    ::schem::sym::line $c $x $y {-30 0 -8 0} $o         ;# base lead
+    ::schem::sym::line $c $x $y {-8 -12 -8 12} $o       ;# base bar
+    ::schem::sym::line $c $x $y {-8 -6 8 -14} $o        ;# to collector
+    ::schem::sym::line $c $x $y {8 -14 8 -26} $o        ;# collector lead up
+    ::schem::sym::line $c $x $y {8 -26 16 -26} $o
+    ::schem::sym::line $c $x $y {-8 6 8 14} $o          ;# to emitter
+    ::schem::sym::line $c $x $y {8 14 8 26} $o          ;# emitter lead down
+    ::schem::sym::line $c $x $y {8 26 16 26} $o
+    # emitter arrow (NPN points out)
+    ::schem::sym::line $c $x $y {2 9 8 14 1 15} $o
+    ::schem::sym::labels $c $x $y $o 20 30
+    return [::schem::sym::result $o 46 56 {b {-30 0} c {16 -26} e {16 26}}]
+}
+
+# mosfet -- an N-channel MOSFET: gate bar, channel, source/drain.
+# Terminals g (left), d (top-right), s (bottom-right).
+proc ::schem::sym::draw_mosfet {c x y o base} {
+    ::schem::sym::line $c $x $y {-30 0 -12 0} $o        ;# gate lead
+    ::schem::sym::line $c $x $y {-12 -12 -12 12} $o     ;# gate bar
+    ::schem::sym::line $c $x $y {-6 -12 -6 12} $o       ;# channel bar
+    # drain
+    ::schem::sym::line $c $x $y {-6 -9 8 -9} $o
+    ::schem::sym::line $c $x $y {8 -9 8 -26} $o
+    ::schem::sym::line $c $x $y {8 -26 16 -26} $o
+    # source
+    ::schem::sym::line $c $x $y {-6 9 8 9} $o
+    ::schem::sym::line $c $x $y {8 9 8 26} $o
+    ::schem::sym::line $c $x $y {8 26 16 26} $o
+    # channel-to-source arrow
+    ::schem::sym::line $c $x $y {-6 0 8 0} $o
+    ::schem::sym::line $c $x $y {2 -4 8 0 2 4} $o
+    ::schem::sym::labels $c $x $y $o 20 30
+    return [::schem::sym::result $o 46 56 {g {-30 0} d {16 -26} s {16 26}}]
+}
+
+# core -- a magnetic core: two parallel bars (the ferrite) with windings hint.
+proc ::schem::sym::draw_core {c x y o base} {
+    ::schem::sym::line $c $x $y {-30 0 -14 0} $o
+    ::schem::sym::line $c $x $y {-2 -14 -2 14} $o
+    ::schem::sym::line $c $x $y {2 -14 2 14} $o
+    ::schem::sym::line $c $x $y {14 0 30 0} $o
+    # winding bumps
+    set pts {-14 0}
+    foreach cx {-10 -6} { lappend pts [expr {$cx-2}] -2 $cx -7 [expr {$cx+2}] -2 }
+    lappend pts -2 0
+    ::schem::sym::line $c $x $y $pts $o -smooth 1
+    ::schem::sym::labels $c $x $y $o 30 16
+    return [::schem::sym::result $o 60 30 {xp {-30 0} xn {30 0} yp {-30 0} yn {30 0} s {0 14}}]
+}
