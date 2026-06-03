@@ -25,7 +25,7 @@ proc ok {name cond} {
 }
 proc section {t} { puts "\n# $t" }
 
-set p0 [file join $root experiments fpga phase0]
+set p0 [file join $root experiments phase0]
 
 # --------------------------------------------------------------------
 section "import the real synthesized counter"

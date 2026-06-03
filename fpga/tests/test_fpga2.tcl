@@ -120,7 +120,7 @@ ok "BUF imports to BUF prim, ports A,Y" {
 # ====================================================================
 section "import the real synthesized up/down counter"
 # ====================================================================
-set p1 [file join $root experiments fpga phase1]
+set p1 [file join $root experiments phase1]
 set ir [::schem::digital::yosys::parse [file join $p1 updown.synth.json]]
 ok "top module is updown"            {[dict get $ir name] eq "updown"}
 ok "q is a 4-bit output"             {[llength [dict get $ir outputs q]] == 4}

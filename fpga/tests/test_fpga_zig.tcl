@@ -33,7 +33,7 @@ proc zigExe {} {
     return ""
 }
 
-set p0  [file join $root experiments fpga phase0]
+set p0  [file join $root experiments phase0]
 set ir  [::schem::digital::yosys::parse [file join $p0 counter.synth.json]]
 set order [dict get [::schem::digital::levelize $ir] order]
 
