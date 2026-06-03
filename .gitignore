@@ -12,3 +12,7 @@ svgtmp*.svg
 
 # Local Zig toolchain unpacked into the repo, if any.
 zig-linux-*/
+
+# Claude Code harness machinery: agent worktrees and local session state.
+# A worktree is a nested checkout with its own .git -- never commit it.
+.claude/
