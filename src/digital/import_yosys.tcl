@@ -247,18 +247,64 @@ proc ::schem::digital::yosys::MapCell {cname cdef netMapVar nextVar} {
             return [Cell $cname MUX {} \
                 [dict create A [G $conn A] B [G $conn B] S [G $conn S] Y [G $conn Y]]]
         }
-        {$_DFF_P_} {
-            # Positive-edge D flip-flop: C(clock) D Q.  No reset/enable.
-            set p [dict create clkpol 1 rstpol 0 rstval 0 async 0 enable 0]
-            return [Cell $cname DFF $p \
-                [dict create CLK [G $conn C] D [G $conn D] Q [G $conn Q]]]
-        }
         default {
+            # The whole $_*DFF*_ flip-flop family maps to a single DFF cell whose
+            # PARAMS carry the variant (clock edge, sync/async reset polarity and
+            # value, clock-enable polarity).  Yosys encodes those in the type-name
+            # letters [NP] (negedge/posedge or active-low/high) and [01] (reset
+            # value); see the Yosys internal cell library.  Ports: C(lock) D Q,
+            # plus R for any reset and E for any enable.  The kernel reads the
+            # params (simkernel.tcl tick) -- one type, all variants.
+            set dff [MapDff $cname $type conn]
+            if {$dff ne ""} { return $dff }
             return -code error \
                 "yosys import: unsupported cell type '$type' (instance '$cname');\
                  run 'techmap' to reduce to the gate set, or extend MapCell"
         }
     }
+}
+
+# Pol -- Yosys polarity letter to a 1/0 flag (P/positive -> 1, N/negative -> 0).
+proc ::schem::digital::yosys::Pol {c} { return [expr {$c eq "P" ? 1 : 0}] }
+
+# MapDff -- decode a Yosys flip-flop type name into a DFF cell, or "" if the
+# name is not a flip-flop.  Covers the bit-level family techmap emits:
+#   $_DFF_[NP]_                  plain (C D Q)
+#   $_DFFE_[NP][NP]_             + clock enable           (+E)
+#   $_DFF_[NP][NP][01]_          + ASYNC reset            (+R)
+#   $_DFFE_[NP][NP][01][NP]_     + async reset + enable   (+R +E)
+#   $_SDFF_[NP][NP][01]_         + SYNC reset             (+R)
+#   $_SDFFE_[NP][NP][01][NP]_    + sync reset + enable    (+R +E)
+# clkpol/rstpol/enpol are 1 for P, 0 for N; rstval is the trailing 0/1; async
+# distinguishes $_DFF_xyz_ (async) from $_SDFF_xyz_ (sync).
+proc ::schem::digital::yosys::MapDff {cname type connVar} {
+    upvar 1 $connVar conn
+    set base {clkpol 1 rstpol 0 rstval 0 async 0 enable 0 enpol 1}
+    if {[regexp {^\$_DFF_([NP])_$} $type -> ce]} {
+        set p [dict replace $base clkpol [Pol $ce]]
+        return [Cell $cname DFF $p [dict create CLK [G $conn C] D [G $conn D] Q [G $conn Q]]]
+    }
+    if {[regexp {^\$_DFFE_([NP])([NP])_$} $type -> ce ee]} {
+        set p [dict replace $base clkpol [Pol $ce] enable 1 enpol [Pol $ee]]
+        return [Cell $cname DFF $p [dict create CLK [G $conn C] D [G $conn D] EN [G $conn E] Q [G $conn Q]]]
+    }
+    if {[regexp {^\$_DFF_([NP])([NP])([01])_$} $type -> ce re rv]} {
+        set p [dict replace $base clkpol [Pol $ce] async 1 rstpol [Pol $re] rstval $rv]
+        return [Cell $cname DFF $p [dict create CLK [G $conn C] D [G $conn D] R [G $conn R] Q [G $conn Q]]]
+    }
+    if {[regexp {^\$_DFFE_([NP])([NP])([01])([NP])_$} $type -> ce re rv ee]} {
+        set p [dict replace $base clkpol [Pol $ce] async 1 rstpol [Pol $re] rstval $rv enable 1 enpol [Pol $ee]]
+        return [Cell $cname DFF $p [dict create CLK [G $conn C] D [G $conn D] R [G $conn R] EN [G $conn E] Q [G $conn Q]]]
+    }
+    if {[regexp {^\$_SDFF_([NP])([NP])([01])_$} $type -> ce re rv]} {
+        set p [dict replace $base clkpol [Pol $ce] async 0 rstpol [Pol $re] rstval $rv]
+        return [Cell $cname DFF $p [dict create CLK [G $conn C] D [G $conn D] R [G $conn R] Q [G $conn Q]]]
+    }
+    if {[regexp {^\$_SDFFE_([NP])([NP])([01])([NP])_$} $type -> ce re rv ee]} {
+        set p [dict replace $base clkpol [Pol $ce] async 0 rstpol [Pol $re] rstval $rv enable 1 enpol [Pol $ee]]
+        return [Cell $cname DFF $p [dict create CLK [G $conn C] D [G $conn D] R [G $conn R] EN [G $conn E] Q [G $conn Q]]]
+    }
+    return ""
 }
 
 # Cell -- assemble a cell dict in the IR shape.

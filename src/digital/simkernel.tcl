@@ -240,16 +240,46 @@ proc ::schem::digital::tick {design order state} {
         set name [dict get $c name]
         switch $type {
             DFF {
+                # One DFF cell covers the whole flip-flop family; the params
+                # select the behaviour (the importer folds $_DFF*/$_SDFF*_ here).
+                #   async reset: level-sensitive, forces rstval while R asserted;
+                #   on the active clock edge, priority is  sync-reset > enable-hold
+                #   > data load.  (See the Yosys cell library / docs/DIGITAL.md.)
+                # Default the optional variant params so a minimal DFF
+                # ({clkpol 1}, no reset/enable) behaves as a plain flip-flop.
+                set p [dict merge {clkpol 1 rstpol 0 rstval 0 async 0 enable 0 enpol 1} \
+                           [dict get $c params]]
                 set clknet [lindex [dict get $c conn CLK] 0]
-                set edge [ClockEdge $netval $prev $clknet [dict get $c params clkpol]]
-                if {$edge} {
-                    set d [dict get $netval [lindex [dict get $c conn D] 0]]
-                    dict set q $name $d
+                set edge [ClockEdge $netval $prev $clknet [dict get $p clkpol]]
+                set rstActive 0
+                if {[dict get $p async] && [dict exists $c conn R]} {
+                    set r [dict get $netval [lindex [dict get $c conn R] 0]]
+                    set rstActive [expr {$r == [dict get $p rstpol]}]
+                }
+                if {$rstActive} {
+                    dict set q $name [dict get $p rstval]
+                } elseif {$edge} {
+                    set syncRst 0
+                    if {![dict get $p async] && [dict exists $c conn R]} {
+                        set r [dict get $netval [lindex [dict get $c conn R] 0]]
+                        set syncRst [expr {$r == [dict get $p rstpol]}]
+                    }
+                    set enabled 1
+                    if {[dict get $p enable] && [dict exists $c conn EN]} {
+                        set e [dict get $netval [lindex [dict get $c conn EN] 0]]
+                        set enabled [expr {$e == [dict get $p enpol]}]
+                    }
+                    if {$syncRst} {
+                        dict set q $name [dict get $p rstval]
+                    } elseif {$enabled} {
+                        dict set q $name [dict get $netval [lindex [dict get $c conn D] 0]]
+                    }
+                    # disabled and not reset -> hold (q unchanged)
                 }
             }
-            DFFE - SDFF - ADFF - DLATCH - MEM {
-                # TODO: latch via DFFE_next/SDFF_next/ADFF_next/DLATCH_settle/
-                # MEM_write once those cell evals are implemented in cells.tcl.
+            DLATCH - MEM {
+                # TODO: latch via DLATCH_settle / MEM_write once those cell evals
+                # are implemented in cells.tcl (see docs/DIGITAL.md section 3).
                 return -code error "tick: state cell $type not yet implemented (DFF only)"
             }
         }
