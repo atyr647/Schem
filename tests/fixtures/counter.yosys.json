@@ -1,0 +1,52 @@
+{
+  "creator": "hand-authored schema-faithful fixture (not produced by yosys)",
+  "modules": {
+    "counter8": {
+      "attributes": {
+        "top": "00000000000000000000000000000001",
+        "src": "counter8.v:1"
+      },
+      "ports": {
+        "clk": { "direction": "input",  "bits": [ 2 ] },
+        "q":   { "direction": "output", "bits": [ 3, 4, 5, 6, 7, 8, 9, 10 ] }
+      },
+      "cells": {
+        "ff0": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 11 ], "Q": [ 3 ] } },
+        "ff1": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 12 ], "Q": [ 4 ] } },
+        "ff2": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 13 ], "Q": [ 5 ] } },
+        "ff3": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 14 ], "Q": [ 6 ] } },
+        "ff4": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 15 ], "Q": [ 7 ] } },
+        "ff5": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 16 ], "Q": [ 8 ] } },
+        "ff6": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 17 ], "Q": [ 9 ] } },
+        "ff7": { "hide_name": 1, "type": "$_DFF_P_", "parameters": {}, "connections": { "C": [ 2 ], "D": [ 18 ], "Q": [ 10 ] } },
+
+        "sum0":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 3 ],  "B": [ "1" ], "Y": [ 11 ] } },
+        "carry1": { "hide_name": 1, "type": "$_AND_", "parameters": {}, "connections": { "A": [ 3 ],  "B": [ "1" ], "Y": [ 19 ] } },
+
+        "sum1":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 4 ],  "B": [ 19 ],  "Y": [ 12 ] } },
+        "carry2": { "hide_name": 1, "type": "$_AND_", "parameters": {}, "connections": { "A": [ 4 ],  "B": [ 19 ],  "Y": [ 20 ] } },
+
+        "sum2":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 5 ],  "B": [ 20 ],  "Y": [ 13 ] } },
+        "carry3": { "hide_name": 1, "type": "$_AND_", "parameters": {}, "connections": { "A": [ 5 ],  "B": [ 20 ],  "Y": [ 21 ] } },
+
+        "sum3":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 6 ],  "B": [ 21 ],  "Y": [ 14 ] } },
+        "carry4": { "hide_name": 1, "type": "$_AND_", "parameters": {}, "connections": { "A": [ 6 ],  "B": [ 21 ],  "Y": [ 22 ] } },
+
+        "sum4":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 7 ],  "B": [ 22 ],  "Y": [ 15 ] } },
+        "carry5": { "hide_name": 1, "type": "$_AND_", "parameters": {}, "connections": { "A": [ 7 ],  "B": [ 22 ],  "Y": [ 23 ] } },
+
+        "sum5":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 8 ],  "B": [ 23 ],  "Y": [ 16 ] } },
+        "carry6": { "hide_name": 1, "type": "$_AND_", "parameters": {}, "connections": { "A": [ 8 ],  "B": [ 23 ],  "Y": [ 24 ] } },
+
+        "sum6":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 9 ],  "B": [ 24 ],  "Y": [ 17 ] } },
+        "carry7": { "hide_name": 1, "type": "$_AND_", "parameters": {}, "connections": { "A": [ 9 ],  "B": [ 24 ],  "Y": [ 25 ] } },
+
+        "sum7":   { "hide_name": 1, "type": "$_XOR_", "parameters": {}, "connections": { "A": [ 10 ], "B": [ 25 ],  "Y": [ 18 ] } }
+      },
+      "netnames": {
+        "clk": { "hide_name": 0, "bits": [ 2 ], "attributes": {} },
+        "q":   { "hide_name": 0, "bits": [ 3, 4, 5, 6, 7, 8, 9, 10 ], "attributes": {} }
+      }
+    }
+  }
+}
