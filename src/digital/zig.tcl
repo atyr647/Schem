@@ -187,6 +187,33 @@ proc ::schem::digital::ZEmitComb {c} {
             set a [lindex [dict get $c conn A] 0] ; set b [lindex [dict get $c conn B] 0]
             lappend out "net\[$y\] = if (net\[$s\] == 1) net\[$b\] else net\[$a\];"
         }
+        NMUX_eval {
+            set y [lindex [dict get $c conn Y] 0] ; set s [lindex [dict get $c conn S] 0]
+            set a [lindex [dict get $c conn A] 0] ; set b [lindex [dict get $c conn B] 0]
+            lappend out "net\[$y\] = (if (net\[$s\] == 1) net\[$b\] else net\[$a\]) ^ 1;"
+        }
+        AOI3_eval {
+            lassign [list [lindex [dict get $c conn A] 0] [lindex [dict get $c conn B] 0] \
+                          [lindex [dict get $c conn C] 0] [lindex [dict get $c conn Y] 0]] a b cc y
+            lappend out "net\[$y\] = ((net\[$a\] & net\[$b\]) | net\[$cc\]) ^ 1;"
+        }
+        OAI3_eval {
+            lassign [list [lindex [dict get $c conn A] 0] [lindex [dict get $c conn B] 0] \
+                          [lindex [dict get $c conn C] 0] [lindex [dict get $c conn Y] 0]] a b cc y
+            lappend out "net\[$y\] = ((net\[$a\] | net\[$b\]) & net\[$cc\]) ^ 1;"
+        }
+        AOI4_eval {
+            lassign [list [lindex [dict get $c conn A] 0] [lindex [dict get $c conn B] 0] \
+                          [lindex [dict get $c conn C] 0] [lindex [dict get $c conn D] 0] \
+                          [lindex [dict get $c conn Y] 0]] a b cc d y
+            lappend out "net\[$y\] = ((net\[$a\] & net\[$b\]) | (net\[$cc\] & net\[$d\])) ^ 1;"
+        }
+        OAI4_eval {
+            lassign [list [lindex [dict get $c conn A] 0] [lindex [dict get $c conn B] 0] \
+                          [lindex [dict get $c conn C] 0] [lindex [dict get $c conn D] 0] \
+                          [lindex [dict get $c conn Y] 0]] a b cc d y
+            lappend out "net\[$y\] = ((net\[$a\] | net\[$b\]) & (net\[$cc\] | net\[$d\])) ^ 1;"
+        }
         default { return -code error "emitZig: no Zig for cell $type" }
     }
     return $out

@@ -185,6 +185,28 @@ proc ::schem::digital::settle {design order state} {
                 set out [::schem::digital::MUX_eval $sel $a $b]
                 set onets [dict get $c conn Y]
             }
+            NMUX_eval {
+                set sel [dict get $netval [lindex [dict get $c conn S] 0]]
+                set a {} ; foreach net [dict get $c conn A] { lappend a [dict get $netval $net] }
+                set b {} ; foreach net [dict get $c conn B] { lappend b [dict get $netval $net] }
+                set out [::schem::digital::NMUX_eval $sel $a $b]
+                set onets [dict get $c conn Y]
+            }
+            AOI3_eval - OAI3_eval {
+                set a  [dict get $netval [lindex [dict get $c conn A] 0]]
+                set b  [dict get $netval [lindex [dict get $c conn B] 0]]
+                set cc [dict get $netval [lindex [dict get $c conn C] 0]]
+                set out [::schem::digital::$ev $a $b $cc]
+                set onets [dict get $c conn Y]
+            }
+            AOI4_eval - OAI4_eval {
+                set a  [dict get $netval [lindex [dict get $c conn A] 0]]
+                set b  [dict get $netval [lindex [dict get $c conn B] 0]]
+                set cc [dict get $netval [lindex [dict get $c conn C] 0]]
+                set d  [dict get $netval [lindex [dict get $c conn D] 0]]
+                set out [::schem::digital::$ev $a $b $cc $d]
+                set onets [dict get $c conn Y]
+            }
             default { return -code error "settle: no eval for cell type $type" }
         }
         foreach net $onets bit $out { dict set netval $net $bit }

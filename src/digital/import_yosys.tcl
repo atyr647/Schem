@@ -210,7 +210,9 @@ proc ::schem::digital::yosys::MapConn {bits netMapVar nextVar} {
 #   $_SDFF_[NP][NP][01]_  -> DFF sync reset {async 0 rstval 0/1}, +R port
 #   $_DFF_[NP][NP][01]_   -> DFF async reset {async 1 ...}, +R port
 #   $_DLATCH_[NP][01]_    -> DLATCH {E D R Q}
-#   $_AOI3_/$_OAI3_/...   -> compound gate, or a LUT with computed init
+# IMPLEMENTED below alongside the gate set: the compound bit-level cells
+#   $_ANDNOT_ $_ORNOT_ $_AOI3_ $_OAI3_ $_AOI4_ $_OAI4_ $_NMUX_ $_BUF_
+# map onto the ANDNOT/ORNOT/AOI3/OAI3/AOI4/OAI4/NMUX/BUF primitives.
 # Coarse cells that survive a bare `synth` (run `techmap` to avoid them):
 #   $dff/$adff/$dffe/$sdff -> word DFF, WIDTH-wide; bit-blast D/Q/EN
 #   $mux                  -> word MUX, WIDTH-wide
@@ -233,8 +235,10 @@ proc ::schem::digital::yosys::MapCell {cname cdef netMapVar nextVar} {
     }
 
     switch -exact -- $type {
-        {$_NOT_} {
-            return [Cell $cname NOT {} [dict create A [G $conn A] Y [G $conn Y]]]
+        {$_NOT_} - {$_BUF_} {
+            # 1-input single-bit cells: A -> Y.  Strip $_ and trailing _.
+            set prim [string range $type 2 end-1]
+            return [Cell $cname $prim {} [dict create A [G $conn A] Y [G $conn Y]]]
         }
         {$_AND_} - {$_OR_} - {$_XOR_} - {$_NAND_} - {$_NOR_} - {$_XNOR_} - {$_ANDNOT_} - {$_ORNOT_} {
             # 2-input single-bit gates: A,B -> Y.  Strip $_ and trailing _.
@@ -242,9 +246,27 @@ proc ::schem::digital::yosys::MapCell {cname cdef netMapVar nextVar} {
             return [Cell $cname $prim {} \
                 [dict create A [G $conn A] B [G $conn B] Y [G $conn Y]]]
         }
+        {$_AOI3_} - {$_OAI3_} {
+            # 3-input compound and/or-invert: A,B,C -> Y (Yosys simcells.v).
+            set prim [string range $type 2 end-1]
+            return [Cell $cname $prim {} \
+                [dict create A [G $conn A] B [G $conn B] C [G $conn C] Y [G $conn Y]]]
+        }
+        {$_AOI4_} - {$_OAI4_} {
+            # 4-input compound and/or-invert: A,B,C,D -> Y (Yosys simcells.v).
+            set prim [string range $type 2 end-1]
+            return [Cell $cname $prim {} \
+                [dict create A [G $conn A] B [G $conn B] C [G $conn C] \
+                             D [G $conn D] Y [G $conn Y]]]
+        }
         {$_MUX_} {
             # Y = S ? B : A
             return [Cell $cname MUX {} \
+                [dict create A [G $conn A] B [G $conn B] S [G $conn S] Y [G $conn Y]]]
+        }
+        {$_NMUX_} {
+            # Y = ~(S ? B : A)   (Yosys $_NMUX_, simcells.v)
+            return [Cell $cname NMUX {} \
                 [dict create A [G $conn A] B [G $conn B] S [G $conn S] Y [G $conn Y]]]
         }
         default {

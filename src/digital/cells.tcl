@@ -81,11 +81,15 @@ proc ::schem::digital::LUT_eval {params in} {
 
 # Gate -- the basic Boolean gates, bitwise over equal-width vectors.  ANCHOR.
 #
-# One proc serves AND/OR/XOR/NAND/NOR/XNOR/NOT/BUF: `op` selects the function,
-# `a`/`b` are LSB-first bit lists (NOT/BUF ignore `b`).  Output is the same
-# width as the inputs.  These exist so trivial logic need not be LUT-wrapped,
-# and so a LUT can be cross-checked against the gate whose truth table it holds
-# (the within-kernel verification of docs/DIGITAL.md section 7).
+# One proc serves AND/OR/XOR/NAND/NOR/XNOR/NOT/BUF plus the two compound 2-input
+# gates ANDNOT/ORNOT: `op` selects the function, `a`/`b` are LSB-first bit lists
+# (NOT/BUF ignore `b`).  Output is the same width as the inputs.  These exist so
+# trivial logic need not be LUT-wrapped, and so a LUT can be cross-checked
+# against the gate whose truth table it holds (the within-kernel verification of
+# docs/DIGITAL.md section 7).
+#
+# ANDNOT/ORNOT match the Yosys $_ANDNOT_/$_ORNOT_ cells (simcells.v):
+#   ANDNOT: Y = A & ~B    ORNOT: Y = A | ~B
 #
 # Fully implemented.
 proc ::schem::digital::Gate_eval {op a {b {}}} {
@@ -95,17 +99,49 @@ proc ::schem::digital::Gate_eval {op a {b {}}} {
         set x [lindex $a $i]
         set y [lindex $b $i]
         switch $op {
-            AND  { lappend out [expr {($x & $y) & 1}] }
-            OR   { lappend out [expr {($x | $y) & 1}] }
-            XOR  { lappend out [expr {($x ^ $y) & 1}] }
-            NAND { lappend out [expr {!($x & $y) & 1}] }
-            NOR  { lappend out [expr {!($x | $y) & 1}] }
-            XNOR { lappend out [expr {!($x ^ $y) & 1}] }
-            NOT  { lappend out [expr {!$x & 1}] }
-            BUF  { lappend out [expr {$x & 1}] }
+            AND    { lappend out [expr {($x & $y) & 1}] }
+            OR     { lappend out [expr {($x | $y) & 1}] }
+            XOR    { lappend out [expr {($x ^ $y) & 1}] }
+            NAND   { lappend out [expr {!($x & $y) & 1}] }
+            NOR    { lappend out [expr {!($x | $y) & 1}] }
+            XNOR   { lappend out [expr {!($x ^ $y) & 1}] }
+            NOT    { lappend out [expr {!$x & 1}] }
+            BUF    { lappend out [expr {$x & 1}] }
+            ANDNOT { lappend out [expr {($x & !$y) & 1}] }
+            ORNOT  { lappend out [expr {($x | !$y) & 1}] }
             default { return -code error "unknown gate op: $op" }
         }
     }
+    return $out
+}
+
+# AOI/OAI -- the compound and-or-invert / or-and-invert gates a standard-cell
+# mapper (Yosys abc -g ...,AOI3,...) emits.  Single-bit (1-bit ports), matching
+# Yosys $_AOI3_/$_OAI3_/$_AOI4_/$_OAI4_ exactly (simcells.v):
+#   AOI3: Y = ~((A & B) | C)            OAI3: Y = ~((A | B) & C)
+#   AOI4: Y = ~((A & B) | (C & D))      OAI4: Y = ~((A | B) & (C | D))
+# NOTE: Yosys $_OAI4_ is ~((A|B)&(C|D)) -- an OR on the (C,D) leg, not an AND.
+# Each proc takes resolved single bits and returns a 1-bit list (one output net).
+proc ::schem::digital::AOI3_eval {a b c} {
+    return [list [expr {!(($a & $b) | $c) & 1}]]
+}
+proc ::schem::digital::OAI3_eval {a b c} {
+    return [list [expr {!(($a | $b) & $c) & 1}]]
+}
+proc ::schem::digital::AOI4_eval {a b c d} {
+    return [list [expr {!(($a & $b) | ($c & $d)) & 1}]]
+}
+proc ::schem::digital::OAI4_eval {a b c d} {
+    return [list [expr {!(($a | $b) & ($c | $d)) & 1}]]
+}
+
+# NMUX -- inverting 2:1 mux, matching Yosys $_NMUX_ (simcells.v): Y = ~(S?B:A)
+# (= S ? !B : !A).  `sel` is a single bit; `a`,`b` are equal-width LSB-first bit
+# lists.  Output is the same width as the inputs.
+proc ::schem::digital::NMUX_eval {sel a b} {
+    set src [expr {$sel ? $b : $a}]
+    set out {}
+    foreach x $src { lappend out [expr {!$x & 1}] }
     return $out
 }
 
@@ -231,7 +267,21 @@ namespace eval ::schem::digital {
     celltype XNOR   {kind comb  eval Gate_eval inports {A B}   outports Y  op XNOR}
     celltype NOT    {kind comb  eval Gate_eval inports A       outports Y  op NOT}
     celltype BUF    {kind comb  eval Gate_eval inports A       outports Y  op BUF}
+    celltype ANDNOT {kind comb  eval Gate_eval inports {A B}   outports Y  op ANDNOT}
+    celltype ORNOT  {kind comb  eval Gate_eval inports {A B}   outports Y  op ORNOT}
     celltype MUX    {kind comb  eval MUX_eval  inports {S A B} outports Y}
+
+    # Compound and inverting cells.  These carry correct eval semantics + ports
+    # so the importer can map the Yosys $_AOI3_/$_OAI3_/$_AOI4_/$_OAI4_/$_NMUX_
+    # cells onto real primitives.  NOTE: the committed simkernel.tcl settle loop
+    # dispatches only LUT_eval/Gate_eval/MUX_eval, so a netlist containing these
+    # cells would need the kernel's settle switch extended to dispatch the new
+    # eval procs below; the evals themselves are unit-tested in test_fpga2.tcl.
+    celltype AOI3   {kind comb  eval AOI3_eval inports {A B C}   outports Y}
+    celltype OAI3   {kind comb  eval OAI3_eval inports {A B C}   outports Y}
+    celltype AOI4   {kind comb  eval AOI4_eval inports {A B C D} outports Y}
+    celltype OAI4   {kind comb  eval OAI4_eval inports {A B C D} outports Y}
+    celltype NMUX   {kind comb  eval NMUX_eval inports {S A B}   outports Y}
 
     celltype DFF    {kind state clocked 1 inports {D CLK}        outports Q  clkport CLK}
     celltype DFFE   {kind state clocked 1 inports {D EN CLK}     outports Q  clkport CLK}
