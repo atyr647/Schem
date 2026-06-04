@@ -70,6 +70,7 @@ proc ::schem::digital::emitZig {design order steps outbus {label q}} {
     lappend S "fn settle() void {"
     lappend S "    net\[0\] = 0;"
     lappend S "    net\[1\] = 1;"
+    lappend S "    net\[2\] = 0;"
     foreach d $dffs { lappend S "    net\[[dict get $d q]\] = qreg\[[dict get $d idx]\];" }
     foreach name $order {
         set c [::schem::digital::CellByName $design $name]

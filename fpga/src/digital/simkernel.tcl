@@ -55,7 +55,8 @@ proc ::schem::digital::levelize {design} {
     }
 
     # ready nets: const rails (0,1) + design inputs + every STATE cell output.
-    set ready [dict create 0 1 1 1]
+    # const rails: net 0=const0, 1=const1, 2=const-x (don't-care -> 0 in 2-state).
+    set ready [dict create 0 1 1 1 2 1]
     foreach {sig nets} [dict get $design inputs] {
         foreach net $nets { dict set ready $net 1 }
     }
@@ -120,7 +121,7 @@ proc ::schem::digital::levelize {design} {
 # state-output overrides are noted where they will hook in.
 proc ::schem::digital::settle {design order state} {
     variable CELLS
-    set netval [dict create 0 0 1 1]
+    set netval [dict create 0 0 1 1 2 0]
 
     # design inputs (stimulus is applied by the caller into `design inputs`).
     foreach {sig nets} [dict get $design inputs] {
@@ -156,9 +157,12 @@ proc ::schem::digital::settle {design order state} {
         }
     }
 
-    # walk the combinational DAG.
+    # walk the combinational DAG.  Index cells by name once (O(n)) so the walk
+    # is O(n), not O(n^2) -- a real core has thousands of cells.
+    set byname [dict create]
+    foreach c [dict get $design cells] { dict set byname [dict get $c name] $c }
     foreach name $order {
-        set c [::schem::digital::CellByName $design $name]
+        set c [dict get $byname $name]
         set type [dict get $c type]
         set desc [dict get $CELLS $type]
         set ev [dict get $desc eval]

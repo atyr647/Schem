@@ -68,12 +68,13 @@ ok gate-and-vec {[::schem::digital::Gate_eval AND {1 1 0 0} {1 0 1 0}] eq {1 0 0
 ok gate-not-vec {[::schem::digital::Gate_eval NOT {1 0 1 0}] eq {0 1 0 1}}
 
 # levelize must flag a combinational loop (two BUFs feeding each other's input).
+# Nets 0/1/2 are the reserved const rails (0, 1, x); the loop uses 3<->4.
 ok levelize-loop {
     [llength [dict get [::schem::digital::levelize [dict create \
-        name loop nbits 4 inputs {} outputs {} clocks {} \
+        name loop nbits 5 inputs {} outputs {} clocks {} \
         cells [list \
-            [dict create name g0 type BUF params {} conn {A 2 Y 3}] \
-            [dict create name g1 type BUF params {} conn {A 3 Y 2}]]]] loops]] == 2
+            [dict create name g0 type BUF params {} conn {A 4 Y 3}] \
+            [dict create name g1 type BUF params {} conn {A 3 Y 4}]]]] loops]] == 2
 }
 
 # ============================================================================
