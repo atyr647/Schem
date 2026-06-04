@@ -1,0 +1,21 @@
+
+16. Printing statistics.
+
+=== soc ===
+
+   Number of wires:              25955
+   Number of wire bits:          57293
+   Number of public wires:        2169
+   Number of public wire bits:   16866
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:              55743
+     $_AND_                       4639
+     $_DFF_P_                    16525
+     $_MUX_                      33135
+     $_NOT_                        326
+     $_OR_                        1050
+     $_XNOR_                         1
+     $_XOR_                         67
+
