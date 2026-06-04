@@ -128,6 +128,47 @@ proc ::schem::digital::emitZig {design order steps outbus {label q}} {
     return [join $S \n]
 }
 
+# emitZigBench -- the LOOP-DRIVER host (the emulator-backend pattern): instead of
+# baked per-cycle steps, wrap the SAME compiled core in a Zig loop that generates
+# the clock, holds reset for `rstcycles`, runs `runcycles` full clock periods
+# timed, and reports the final `outbus` value + throughput.  This is how a real
+# emulator host drives the core (unbounded cycles, native loop) and how we measure
+# whether gate-level cycle-accuracy is fast enough.  It reuses emitZig's core
+# emission verbatim (decls + settle + tick) and only replaces the host main.
+proc ::schem::digital::emitZigBench {design order clknet rstnet rstcycles runcycles outbus {label q}} {
+    set OB [format %c 123] ; set CB [format %c 125]
+    # Reuse the exact compiled core by emitting with no steps, then cutting the
+    # (empty) trace main off and appending the loop host -- zero core duplication.
+    set full [emitZig $design $order {} {}]
+    set core [string trimright [string range $full 0 [expr {[string first "pub fn main()" $full] - 1}]]]
+    set S [split $core \n]
+    lappend S ""
+    lappend S "pub fn main() !void $OB"
+    lappend S "    const stdout = std.io.getStdOut().writer();"
+    lappend S "    net\[$rstnet\] = 1;"
+    lappend S "    var i: u64 = 0;"
+    lappend S "    while (i < $rstcycles) : (i += 1) $OB"
+    lappend S "        net\[$clknet\] = 0; tick();"
+    lappend S "        net\[$clknet\] = 1; tick();"
+    lappend S "    $CB"
+    lappend S "    net\[$rstnet\] = 0;"
+    lappend S "    var timer = try std.time.Timer.start();"
+    lappend S "    i = 0;"
+    lappend S "    while (i < $runcycles) : (i += 1) $OB"
+    lappend S "        net\[$clknet\] = 0; tick();"
+    lappend S "        net\[$clknet\] = 1; tick();"
+    lappend S "    $CB"
+    lappend S "    const ns = timer.read();"
+    set terms {} ; set i 0
+    foreach b $outbus { lappend terms "(@as(u64, net\[$b\]) << $i)" ; incr i }
+    set expr [expr {[llength $terms] ? [join $terms " | "] : "0"}]
+    lappend S "    const final: u64 = $expr;"
+    lappend S "    const mcps = @as(f64, @floatFromInt(@as(u64, $runcycles))) / @as(f64, @floatFromInt(ns)) * 1000.0;"
+    lappend S "    try stdout.print(\"$label={d} cycles={d} ns={d} Mcyc_per_s={d:.1}\\n\", .{ final, @as(u64, $runcycles), ns, mcps });"
+    lappend S "$CB"
+    return [join $S \n]
+}
+
 # ZEmitEdge -- the on-edge latch body for one DFF (sync-reset > enable > load).
 # Zig braces are built with [format %c] so the Tcl proc body stays brace-balanced.
 proc ::schem::digital::ZEmitEdge {d} {
